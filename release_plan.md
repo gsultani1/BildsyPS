@@ -1,19 +1,15 @@
 # PowerShell AI Assistant - Release Plan
 
 ## Project Name Ideas
-- **PSAssistant** - Simple and descriptive
-- **ShellGPT-PS** - Plays on existing ShellGPT popularity
-- **TerminalAI** - Generic but clear
-- **PowerChat** - PowerShell + Chat
-- **PSChat** - Short and memorable
+- **PowerAIOS** - Generic but clear
 
 ---
 
 ## Pre-Release Checklist
 
 ### 1. Code Cleanup
-- [ ] Remove any hardcoded paths or personal info
-- [ ] Audit all files for API keys or secrets
+- [x] Remove any hardcoded paths or personal info (uses $env:USERPROFILE, $PSScriptRoot)
+- [x] Audit all files for API keys or secrets (ChatConfig.json gitignored, .example files provided)
 - [ ] Remove debug/test code
 - [ ] Ensure consistent code style
 - [ ] Add error handling where missing
