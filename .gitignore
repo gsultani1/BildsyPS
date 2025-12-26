@@ -42,6 +42,7 @@ todo.md
 release_plan.md
 cross_platform_plan.md
 scope.md 
+architecture.md
 
 # Test files
 test_*.ps1
