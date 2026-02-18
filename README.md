@@ -1,12 +1,12 @@
-# PSAigent
+# Shelix
 
-> Turn your PowerShell terminal into an AI-powered assistant. Chat with Claude, GPT, or local LLMs. Execute commands, manage files, search the web, and connect to MCP servers.
+> Your terminal, orchestrated. Shelix is an AI shell environment that understands your context — your files, your git state, your running processes — and acts on your behalf. Chat with Claude, GPT, or local LLMs. Execute commands, manage files, search the web, schedule workflows, and connect to MCP servers. All from PowerShell, all local-first, nothing phoning home.
 
 ![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![AI](https://img.shields.io/badge/AI-Claude%20%7C%20GPT%20%7C%20Ollama-purple)
 
-**Topics:** `powershell` `ai-assistant` `claude` `chatgpt` `ollama` `llm` `terminal` `mcp` `automation` `cli`
+**Topics:** `shelix` `ai-assistant` `claude` `chatgpt` `ollama` `llm` `terminal` `mcp` `automation` `cli`
 
 ## Features
 
@@ -16,6 +16,9 @@
 - **Intent system**: Natural language actions like "create a doc called Report"
 - **Streaming responses**: Real-time output from AI providers
 - **MCP Client**: Connect to external MCP servers for extended capabilities
+- **Conversation persistence**: Sessions auto-save and resume across restarts
+- **Folder awareness**: AI sees your current directory, git status, and file structure
+- **Token budget management**: Intelligently trims context to fit model limits, summarizes evicted messages
 
 ### 🔧 Available Intents
 
@@ -29,7 +32,7 @@
 | **Web** | `web_search`, `wikipedia`, `fetch_url`, `search_web` |
 | **Apps** | `open_word`, `open_excel`, `open_notepad`, `open_folder`, `open_terminal` |
 | **MCP** | `mcp_servers`, `mcp_connect`, `mcp_tools`, `mcp_call` |
-| **Workflows** | `run_workflow`, `list_workflows`, `research_topic`, `daily_standup` |
+| **Workflows** | `run_workflow`, `list_workflows`, `schedule_workflow`, `list_scheduled_workflows`, `remove_scheduled_workflow` |
 | **System** | `service_restart`, `system_info`, `network_status`, `process_list`, `process_kill` |
 
 ### 🔄 Multi-Step Workflows
@@ -75,11 +78,13 @@ workflow research_and_document -Params @{ topic = "AI agents" }
 chat
 
 # Start AI chat with Claude
-chat-anthropic
+chat -p anthropic
 
-# Use llm CLI (100+ plugins)
-Set-DefaultChatProvider llm
-chat
+# Start with folder awareness (AI sees your current directory)
+chat -FolderAware   # or: chat -f
+
+# Resume last session with context recall
+chat -Continue      # or: chat -c
 
 # Show available commands
 tips
@@ -115,7 +120,7 @@ Change the default chat provider in `ChatConfig.json`:
 ## File Structure
 
 ```
-WindowsPowerShell/
+Shelix/
 ├── Microsoft.PowerShell_profile.ps1  # Main profile (~150 lines, loads modules)
 ├── ChatConfig.json                   # API keys and settings
 ├── ToolPreferences.json              # Tool preferences
@@ -144,7 +149,8 @@ WindowsPowerShell/
 │   ├── FzfIntegration.ps1            # Fuzzy finder integration
 │   ├── PersistentAliases.ps1         # User-defined aliases
 │   ├── ProfileHelp.ps1               # Help, tips, system prompt
-│   ├── ChatSession.ps1               # LLM chat loop
+│   ├── FolderContext.ps1             # Folder awareness for AI context
+│   ├── ChatSession.ps1               # LLM chat loop + session persistence
 │   ├── ChatProviders.ps1             # AI provider implementations
 │   └── IntentAliasSystem.ps1         # Intent routing system
 └── README.md
@@ -153,12 +159,28 @@ WindowsPowerShell/
 ## Chat Commands
 
 While in chat mode:
-- `exit` - Exit chat
-- `clear` - Clear conversation history
-- `save` - Save conversation to file
-- `tokens` - Show token usage
+- `exit` - Exit chat (auto-saves session)
+- `clear` - Clear conversation (auto-saves previous)
+- `save` / `save <name>` - Save session
+- `resume` / `resume <name>` - Load a saved session
+- `sessions` - Browse all saved sessions
+- `search <keyword>` - Search across all sessions
+- `rename <name>` - Rename current session
+- `delete <name>` - Delete a saved session
+- `export` / `export <name>` - Export session to markdown
+- `budget` - Show token usage breakdown by role
+- `folder` - Inject current directory context
+- `folder <path>` - Inject a specific directory
 - `switch` - Change AI provider
 - `model <name>` - Change model
+
+### Session Flags
+```powershell
+chat -Resume        # or: chat -r  — resume last session
+chat -Continue      # or: chat -c  — resume + inject summary so model recalls context
+chat -FolderAware   # or: chat -f  — inject current directory on start, auto-update on cd
+chat -AutoTrim      # automatically trim context when approaching model limits
+```
 
 ## Safety Features
 
@@ -179,16 +201,16 @@ While in chat mode:
 
 ### PowerShell 5.1 (Windows Default)
 ```powershell
-git clone https://github.com/gsultani1/PSAIgent.git "$HOME\Documents\WindowsPowerShell"
+git clone https://github.com/gsultani1/Shelix.git "$HOME\Documents\WindowsPowerShell"
 ```
 
 ### PowerShell 7 (Cross-Platform)
 ```powershell
 # Windows
-git clone https://github.com/gsultani1/PSAIgent.git "$HOME\Documents\PowerShell"
+git clone https://github.com/gsultani1/Shelix.git "$HOME\Documents\PowerShell"
 
 # macOS/Linux
-git clone https://github.com/gsultani1/PSAIgent.git ~/.config/powershell
+git clone https://github.com/gsultani1/Shelix.git ~/.config/powershell
 ```
 
 ### Setup
@@ -232,18 +254,31 @@ Register-MCPServer -Name "myserver" `
     -Description "My custom server"
 ```
 
-## Development Notes
+## Roadmap
 
-### Linter Warnings
+Shelix today is a shell orchestrator — an AI that understands your terminal context and acts on your behalf. The direction is broader: **mission control for your entire computer**.
 
-You may see PSScriptAnalyzer warnings like:
-```
-The cmdlet 'chat-ollama' uses an unapproved verb.
-```
+See [VISION.md](VISION.md) for the full product direction.
 
-**These are intentional.** PowerShell prefers formal `Verb-Noun` naming (like `Get-Process`), but these are convenience aliases designed for quick daily use, not formal cmdlets. They work correctly.
-
-Affected functions: `chat-ollama`, `chat-anthropic`, `chat-local`, `chat-llm`, `profile-edit`, `pwd-full`, `pwd-short`
+| Status | Feature |
+|--------|---------|
+| ✅ | Multi-provider AI chat (Claude, GPT, Ollama, LM Studio, llm CLI) |
+| ✅ | Intent system — 30+ natural language actions |
+| ✅ | Multi-step workflows + Windows Task Scheduler integration |
+| ✅ | Conversation persistence — sessions survive restarts |
+| ✅ | Token budget management — model-aware context trimming |
+| ✅ | Folder awareness — AI sees your directory, git state, file structure |
+| ✅ | MCP client — connect to any MCP server |
+| ✅ | Safety system — command whitelist, confirmation prompts, rate limiting |
+| 🔜 | Plugin architecture — drop `.ps1` files to add intents without touching core |
+| 🔜 | Custom user skills — define intents via JSON/YAML, no PowerShell required |
+| 🔜 | Toast notifications — surface alerts and task completions |
+| 🔜 | Vision model support — send screenshots/images directly to Claude/GPT-4o |
+| 🔜 | OCR integration — Tesseract for scanned docs, pdftotext for text PDFs |
+| 🔜 | Browser awareness — read active tab URL, pull page content |
+| 🔜 | Agent architecture — dynamic multi-step planning, not just predefined workflows |
+| 🔜 | RAG + SQLite — full-text search over conversation history, embedding-ready |
+| 🔜 | GUI layer — mission control dashboard for your entire computer |
 
 ## License
 

@@ -18,6 +18,8 @@ AIExecutionLog.json
 # Backup files
 *_backup*
 *.bak
+*.backup
+*.old
 profile_backup.txt
 
 # Temporary files
@@ -34,6 +36,12 @@ Desktop.ini
 .idea/
 *.swp
 *.swo
+
+# AI assistant worktrees (local dev artifacts)
+.claude/
+
+# Installed PowerShell modules (not source code)
+Modules/Microsoft.PowerShell.ThreadJob/
 
 # Personal notes and plans
 project docs/

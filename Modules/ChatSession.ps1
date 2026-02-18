@@ -18,12 +18,13 @@ function Start-ChatSession {
         [string]$Provider = $global:DefaultChatProvider,
         [string]$Model = $null,
         [double]$Temperature = 0.7,
-        [int]$MaxTokens = 4096,
+        [int]$MaxResponseTokens = 4096,  # Max tokens for AI response (sent to API)
         [switch]$IncludeSafeCommands,
         [switch]$Stream,
         [switch]$AutoTrim,
-        [switch]$Resume,     # Load last session into context
-        [switch]$Continue    # Load last session + inject summary so model "remembers"
+        [switch]$Resume,
+        [switch]$Continue,
+        [switch]$FolderAware   # Inject current directory context + auto-update on cd
     )
     
     # Get provider config
@@ -53,7 +54,9 @@ function Start-ChatSession {
     Write-Host "  Model: $Model" -ForegroundColor Gray
     if ($Stream) { Write-Host "  Streaming: enabled" -ForegroundColor Gray }
     if ($AutoTrim) { Write-Host "  Auto-trim: enabled" -ForegroundColor Gray }
-    Write-Host "Type 'exit' to quit, 'clear' to reset, 'save' to archive, 'resume' to load last session, 'sessions' to browse, 'tokens' for usage, 'switch' to change provider." -ForegroundColor DarkGray
+    $contextLimit = Get-ModelContextLimit -Model $Model
+    Write-Host "  Context: $([math]::Round($contextLimit/1000))K tokens | Response: $MaxResponseTokens tokens" -ForegroundColor Gray
+    Write-Host "Type 'exit' to quit, 'clear' to reset, 'save' to archive, 'resume' to load last session, 'sessions' to browse, 'budget' for token usage, 'switch' to change provider." -ForegroundColor DarkGray
     
     # Initialize session state
     $global:ChatSessionHistory = @()
@@ -107,6 +110,12 @@ function Start-ChatSession {
             $global:ChatSessionHistory += @{ role = "assistant"; content = "Understood. I have access to PowerShell commands and intent actions. I'm ready to help." }
         }
         Write-Host "  Safe commands context loaded." -ForegroundColor Green
+    }
+    
+    # Folder awareness — inject current directory context
+    if ($FolderAware) {
+        Invoke-FolderContextUpdate -IncludeGitStatus
+        Enable-FolderAwareness
     }
     Write-Host ""
 
@@ -169,9 +178,31 @@ function Start-ChatSession {
                 }
                 continue
             }
-            '^tokens$' { 
+            '^(tokens|budget)$' { 
                 $est = Get-EstimatedTokenCount
-                Write-Host "Estimated tokens in context: $est / $MaxTokens" -ForegroundColor Cyan
+                $contextLimit = Get-ModelContextLimit -Model $Model
+                $budget = $contextLimit - $MaxResponseTokens
+                $pct = if ($budget -gt 0) { [math]::Round(($est / $budget) * 100) } else { 0 }
+                
+                Write-Host "`n  Token Budget" -ForegroundColor Cyan
+                Write-Host "  Context window: $([math]::Round($contextLimit/1000))K tokens ($Model)" -ForegroundColor Gray
+                Write-Host "  Response reserve: $MaxResponseTokens tokens" -ForegroundColor Gray
+                Write-Host "  Input budget: $budget tokens" -ForegroundColor Gray
+                Write-Host "  Current usage: ~$est tokens ($pct%)" -ForegroundColor $(if ($pct -gt 80) { 'Yellow' } elseif ($pct -gt 60) { 'DarkYellow' } else { 'Green' })
+                Write-Host "  Messages: $($global:ChatSessionHistory.Count)" -ForegroundColor Gray
+                
+                # Show per-category breakdown
+                $systemTokens = 0; $userTokens = 0; $assistantTokens = 0
+                foreach ($msg in $global:ChatSessionHistory) {
+                    $t = [math]::Ceiling($msg.content.Length / 4)
+                    switch ($msg.role) {
+                        'system' { $systemTokens += $t }
+                        'user' { $userTokens += $t }
+                        'assistant' { $assistantTokens += $t }
+                    }
+                }
+                Write-Host "  Breakdown: system=$systemTokens  user=$userTokens  assistant=$assistantTokens" -ForegroundColor DarkGray
+                Write-Host ""
                 continue 
             }
             '^search\s+(.+)$' {
@@ -220,6 +251,24 @@ function Start-ChatSession {
                 Write-Host "Model changed to: $Model" -ForegroundColor Green
                 continue
             }
+            '^folder$' {
+                Invoke-FolderContextUpdate -IncludeGitStatus
+                continue
+            }
+            '^folder\s+(.+)$' {
+                $folderPath = $Matches[1]
+                if (Test-Path $folderPath) {
+                    Invoke-FolderContextUpdate -Path (Resolve-Path $folderPath).Path -IncludeGitStatus
+                }
+                else {
+                    Write-Host "Path not found: $folderPath" -ForegroundColor Yellow
+                }
+                continue
+            }
+            '^folder\s+--preview$' {
+                Show-FolderContext -IncludeGitStatus
+                continue
+            }
             '^\s*$' { continue }
         }
 
@@ -229,18 +278,21 @@ function Start-ChatSession {
         $global:ChatSessionHistory += @{ role = "user"; content = $inputText }
         
         $estimatedTokens = Get-EstimatedTokenCount
+        $contextLimit = Get-ModelContextLimit -Model $Model
+        $budget = $contextLimit - $MaxResponseTokens
         
         # Auto-trim context if enabled and approaching limit
-        if ($AutoTrim -and $estimatedTokens -gt ($MaxTokens * 0.8)) {
-            $trimResult = Get-TrimmedMessages -Messages $global:ChatSessionHistory -MaxTokens $MaxTokens -KeepFirstN 2
+        if ($AutoTrim -and $estimatedTokens -gt ($budget * 0.8)) {
+            $trimResult = Get-TrimmedMessages -Messages $global:ChatSessionHistory -ContextLimit $contextLimit -MaxResponseTokens $MaxResponseTokens -KeepFirstN 2 -Summarize
             if ($trimResult.Trimmed) {
                 $global:ChatSessionHistory = $trimResult.Messages
-                Write-Host "  [Auto-trimmed: removed $($trimResult.RemovedCount) old messages]" -ForegroundColor DarkYellow
+                Write-Host "  [Auto-trimmed: $($trimResult.RemovedCount) old messages summarized, ~$($trimResult.EstimatedTokens)/$budget tokens]" -ForegroundColor DarkYellow
                 $estimatedTokens = $trimResult.EstimatedTokens
             }
         }
-        elseif ($estimatedTokens -gt ($MaxTokens * 0.8)) {
-            Write-Host "  Approaching token limit ($estimatedTokens / $MaxTokens). Consider using 'clear' to reset." -ForegroundColor Yellow
+        elseif ($estimatedTokens -gt ($budget * 0.8)) {
+            $pct = [math]::Round(($estimatedTokens / $budget) * 100)
+            Write-Host "  Context $pct% full (~$estimatedTokens/$budget tokens). Use 'budget' for details or 'clear' to reset." -ForegroundColor Yellow
         }
 
         # Prepare messages for API call
@@ -256,7 +308,7 @@ function Start-ChatSession {
             }
             
             # Use unified chat completion with optional streaming
-            $response = Invoke-ChatCompletion -Messages $messagesToSend -Provider $Provider -Model $Model -Temperature $Temperature -MaxTokens $MaxTokens -SystemPrompt $systemPrompt -Stream:$Stream
+            $response = Invoke-ChatCompletion -Messages $messagesToSend -Provider $Provider -Model $Model -Temperature $Temperature -MaxTokens $MaxResponseTokens -SystemPrompt $systemPrompt -Stream:$Stream
             
             $reply = $response.Content
 
@@ -676,6 +728,8 @@ function chat {
     chat                    # Fresh session
     chat -Resume            # Continue last session
     chat -Continue          # Continue with context recall
+    chat -FolderAware       # Include current directory context
+    chat -r -f              # Resume + folder aware
     chat -p anthropic -m claude-sonnet-4-5-20250929
     #>
     param(
@@ -691,7 +745,9 @@ function chat {
         [Alias("r")]
         [switch]$Resume,
         [Alias("c")]
-        [switch]$Continue
+        [switch]$Continue,
+        [Alias("f")]
+        [switch]$FolderAware
     )
     
     $params = @{
@@ -701,6 +757,7 @@ function chat {
         AutoTrim            = $AutoTrim
         Resume              = $Resume
         Continue            = $Continue
+        FolderAware         = $FolderAware
     }
     if ($Model) { $params.Model = $Model }
     

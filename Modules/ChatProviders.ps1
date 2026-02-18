@@ -4,51 +4,73 @@
 # If Warp had this, they wouldn't need $73M
 
 # ===== Provider Configuration =====
+
+# Per-model context window sizes (tokens). Used for intelligent budget management.
+# These are INPUT context limits, not response limits.
+$global:ModelContextLimits = @{
+    # Anthropic
+    'claude-sonnet-4-5-20250929' = 200000
+    'claude-3-5-sonnet-20241022' = 200000
+    'claude-3-5-haiku-20241022'  = 200000
+    'claude-3-opus-20240229'     = 200000
+    # OpenAI
+    'gpt-4o'                     = 128000
+    'gpt-4o-mini'                = 128000
+    'gpt-4-turbo'                = 128000
+    'o1'                         = 200000
+    'o1-mini'                    = 128000
+    # Local defaults (conservative)
+    'llama3.2'                   = 8192
+    'mistral-7b-instruct-v0.3'   = 32768
+}
+# Fallback for unknown models
+$global:DefaultContextLimit = 8192
+$global:DefaultMaxResponseTokens = 4096
 $global:ChatProviders = @{
-    'ollama' = @{
-        Name = 'Ollama'
-        Endpoint = 'http://localhost:11434/v1/chat/completions'
-        DefaultModel = 'llama3.2'
+    'ollama'    = @{
+        Name           = 'Ollama'
+        Endpoint       = 'http://localhost:11434/v1/chat/completions'
+        DefaultModel   = 'llama3.2'
         ApiKeyRequired = $false
-        ApiKeyEnvVar = $null
-        Format = 'openai'  # OpenAI-compatible API
-        Description = 'Local Ollama server (OpenAI-compatible)'
+        ApiKeyEnvVar   = $null
+        Format         = 'openai'  # OpenAI-compatible API
+        Description    = 'Local Ollama server (OpenAI-compatible)'
     }
     'anthropic' = @{
-        Name = 'Anthropic'
-        Endpoint = 'https://api.anthropic.com/v1/messages'
-        DefaultModel = 'claude-sonnet-4-5-20250929'
+        Name           = 'Anthropic'
+        Endpoint       = 'https://api.anthropic.com/v1/messages'
+        DefaultModel   = 'claude-sonnet-4-5-20250929'
         ApiKeyRequired = $true
-        ApiKeyEnvVar = 'ANTHROPIC_API_KEY'
-        Format = 'anthropic'  # Anthropic Messages API
-        Description = 'Anthropic Claude API (cloud)'
+        ApiKeyEnvVar   = 'ANTHROPIC_API_KEY'
+        Format         = 'anthropic'  # Anthropic Messages API
+        Description    = 'Anthropic Claude API (cloud)'
     }
-    'lmstudio' = @{
-        Name = 'LM Studio'
-        Endpoint = 'http://localhost:1234/v1/chat/completions'
-        DefaultModel = 'mistral-7b-instruct-v0.3'
+    'lmstudio'  = @{
+        Name           = 'LM Studio'
+        Endpoint       = 'http://localhost:1234/v1/chat/completions'
+        DefaultModel   = 'mistral-7b-instruct-v0.3'
         ApiKeyRequired = $false
-        ApiKeyEnvVar = $null
-        Format = 'openai'  # OpenAI-compatible API
-        Description = 'Local LM Studio server'
+        ApiKeyEnvVar   = $null
+        Format         = 'openai'  # OpenAI-compatible API
+        Description    = 'Local LM Studio server'
     }
-    'openai' = @{
-        Name = 'OpenAI'
-        Endpoint = 'https://api.openai.com/v1/chat/completions'
-        DefaultModel = 'gpt-4o-mini'
+    'openai'    = @{
+        Name           = 'OpenAI'
+        Endpoint       = 'https://api.openai.com/v1/chat/completions'
+        DefaultModel   = 'gpt-4o-mini'
         ApiKeyRequired = $true
-        ApiKeyEnvVar = 'OPENAI_API_KEY'
-        Format = 'openai'
-        Description = 'OpenAI API (cloud)'
+        ApiKeyEnvVar   = 'OPENAI_API_KEY'
+        Format         = 'openai'
+        Description    = 'OpenAI API (cloud)'
     }
-    'llm' = @{
-        Name = 'LLM CLI'
-        Endpoint = $null  # Uses CLI, not HTTP
-        DefaultModel = 'gpt-4o-mini'
+    'llm'       = @{
+        Name           = 'LLM CLI'
+        Endpoint       = $null  # Uses CLI, not HTTP
+        DefaultModel   = 'gpt-4o-mini'
         ApiKeyRequired = $false  # Managed by llm CLI
-        ApiKeyEnvVar = $null
-        Format = 'llm-cli'  # Special format for CLI wrapper
-        Description = 'Simon Willison llm CLI (100+ plugins)'
+        ApiKeyEnvVar   = $null
+        Format         = 'llm-cli'  # Special format for CLI wrapper
+        Description    = 'Simon Willison llm CLI (100+ plugins)'
     }
 }
 
@@ -73,7 +95,8 @@ function Import-ChatConfig {
                 }
             }
             return $true
-        } catch {
+        }
+        catch {
             Write-Host "Warning: Failed to load ChatConfig.json: $($_.Exception.Message)" -ForegroundColor Yellow
         }
     }
@@ -115,11 +138,11 @@ function Get-ChatApiKey {
 
 function Set-ChatApiKey {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [ValidateSet('anthropic', 'openai')]
         [string]$Provider,
         
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$ApiKey,
         
         [ValidateSet('User', 'Process')]
@@ -140,7 +163,8 @@ function Set-ChatApiKey {
         Set-Item -Path "env:$envVar" -Value $ApiKey
         Write-Host "API key for $($config.Name) saved to user environment." -ForegroundColor Green
         Write-Host "Variable: $envVar" -ForegroundColor Gray
-    } else {
+    }
+    else {
         Set-Item -Path "env:$envVar" -Value $ApiKey
         Write-Host "API key for $($config.Name) set for current session only." -ForegroundColor Yellow
     }
@@ -174,8 +198,8 @@ function Test-ChatProvider {
         if ($config.Format -eq 'openai') {
             # For local servers, try a simple request
             $testBody = @{
-                model = $config.DefaultModel
-                messages = @(@{ role = "user"; content = "Hi" })
+                model      = $config.DefaultModel
+                messages   = @(@{ role = "user"; content = "Hi" })
                 max_tokens = 5
             } | ConvertTo-Json -Depth 5
             
@@ -191,14 +215,14 @@ function Test-ChatProvider {
         }
         elseif ($config.Format -eq 'anthropic') {
             $testBody = @{
-                model = $config.DefaultModel
+                model      = $config.DefaultModel
                 max_tokens = 5
-                messages = @(@{ role = "user"; content = "Hi" })
+                messages   = @(@{ role = "user"; content = "Hi" })
             } | ConvertTo-Json -Depth 5
             
             $headers = @{
-                "Content-Type" = "application/json"
-                "x-api-key" = (Get-ChatApiKey $Provider)
+                "Content-Type"      = "application/json"
+                "x-api-key"         = (Get-ChatApiKey $Provider)
                 "anthropic-version" = "2023-06-01"
             }
             
@@ -227,10 +251,10 @@ function Invoke-OpenAICompatibleChat {
     )
     
     $body = @{
-        model = $Model
-        messages = $Messages
+        model       = $Model
+        messages    = $Messages
         temperature = $Temperature
-        max_tokens = $MaxTokens
+        max_tokens  = $MaxTokens
     }
     
     if ($Stream) {
@@ -278,7 +302,8 @@ function Invoke-OpenAICompatibleChat {
                             $fullContent += $token
                             Write-Host $token -NoNewline -ForegroundColor White
                         }
-                    } catch {
+                    }
+                    catch {
                         # Skip malformed chunks
                     }
                 }
@@ -291,11 +316,11 @@ function Invoke-OpenAICompatibleChat {
             Write-Host ""  # Newline after streaming
             
             return @{
-                Content = $fullContent
-                Model = $Model
-                Usage = $null  # Not available in streaming
+                Content    = $fullContent
+                Model      = $Model
+                Usage      = $null  # Not available in streaming
                 StopReason = "stop"
-                Streamed = $true
+                Streamed   = $true
             }
         }
         catch [System.Net.WebException] {
@@ -322,11 +347,11 @@ function Invoke-OpenAICompatibleChat {
         }
         
         return @{
-            Content = $reply
-            Model = $response.model
-            Usage = $response.usage
+            Content    = $reply
+            Model      = $response.model
+            Usage      = $response.usage
             StopReason = $response.choices[0].finish_reason
-            Streamed = $false
+            Streamed   = $false
         }
     }
 }
@@ -354,15 +379,15 @@ function Invoke-AnthropicChat {
             continue
         }
         $anthropicMessages += @{
-            role = $msg.role
+            role    = $msg.role
             content = $msg.content
         }
     }
     
     $body = @{
-        model = $Model
+        model      = $Model
         max_tokens = $MaxTokens
-        messages = $anthropicMessages
+        messages   = $anthropicMessages
     }
     
     if ($SystemPrompt) {
@@ -376,8 +401,8 @@ function Invoke-AnthropicChat {
     $jsonBody = $body | ConvertTo-Json -Depth 10
     
     $headers = @{
-        "Content-Type" = "application/json"
-        "x-api-key" = $ApiKey
+        "Content-Type"      = "application/json"
+        "x-api-key"         = $ApiKey
         "anthropic-version" = "2023-06-01"
     }
     
@@ -393,12 +418,12 @@ function Invoke-AnthropicChat {
     }
     
     return @{
-        Content = $reply
-        Model = $apiResponse.model
-        Usage = @{
-            prompt_tokens = $apiResponse.usage.input_tokens
+        Content    = $reply
+        Model      = $apiResponse.model
+        Usage      = @{
+            prompt_tokens     = $apiResponse.usage.input_tokens
             completion_tokens = $apiResponse.usage.output_tokens
-            total_tokens = $apiResponse.usage.input_tokens + $apiResponse.usage.output_tokens
+            total_tokens      = $apiResponse.usage.input_tokens + $apiResponse.usage.output_tokens
         }
         StopReason = $apiResponse.stop_reason
     }
@@ -452,12 +477,12 @@ function Invoke-LLMCliChat {
         }
         
         return @{
-            Content = $output -join "`n"
-            Model = $Model
-            Usage = @{
-                prompt_tokens = 0  # llm CLI doesn't report tokens
+            Content    = $output -join "`n"
+            Model      = $Model
+            Usage      = @{
+                prompt_tokens     = 0  # llm CLI doesn't report tokens
                 completion_tokens = 0
-                total_tokens = 0
+                total_tokens      = 0
             }
             StopReason = "stop"
         }
@@ -470,7 +495,7 @@ function Invoke-LLMCliChat {
 # ===== Unified Chat Function =====
 function Invoke-ChatCompletion {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [array]$Messages,
         
         [string]$Provider = $global:DefaultChatProvider,
@@ -519,17 +544,40 @@ function Invoke-ChatCompletion {
 }
 
 # ===== Context Window Management =====
+
+function Get-ModelContextLimit {
+    <#
+    .SYNOPSIS
+    Look up the context window size for a model. Returns token count.
+    #>
+    param([string]$Model)
+    
+    if ($global:ModelContextLimits.ContainsKey($Model)) {
+        return $global:ModelContextLimits[$Model]
+    }
+    # Fuzzy match: if model contains a known key as substring
+    foreach ($key in $global:ModelContextLimits.Keys) {
+        if ($Model -like "*$key*") {
+            return $global:ModelContextLimits[$key]
+        }
+    }
+    return $global:DefaultContextLimit
+}
+
 function Get-TrimmedMessages {
     param(
         [array]$Messages,
-        [int]$MaxTokens = 4096,
-        [int]$TargetTokens = 0,  # If 0, use 80% of MaxTokens
-        [int]$KeepFirstN = 2     # Keep first N messages (usually system context)
+        [int]$ContextLimit = 0,       # Total context window (0 = use default)
+        [int]$MaxResponseTokens = 0,  # Reserve for response (0 = use default)
+        [int]$KeepFirstN = 2,         # Keep first N messages (system context)
+        [switch]$Summarize            # Summarize evicted messages instead of dropping
     )
     
-    if ($TargetTokens -eq 0) {
-        $TargetTokens = [math]::Floor($MaxTokens * 0.8)
-    }
+    if ($ContextLimit -le 0) { $ContextLimit = $global:DefaultContextLimit }
+    if ($MaxResponseTokens -le 0) { $MaxResponseTokens = $global:DefaultMaxResponseTokens }
+    
+    # Budget = context window minus response reservation
+    $budget = $ContextLimit - $MaxResponseTokens
     
     # Estimate current token count (rough: 4 chars per token)
     $estimatedTokens = 0
@@ -537,43 +585,66 @@ function Get-TrimmedMessages {
         $estimatedTokens += [math]::Ceiling($msg.content.Length / 4)
     }
     
-    # If under target, no trimming needed
-    if ($estimatedTokens -le $TargetTokens) {
+    # If under budget, no trimming needed
+    if ($estimatedTokens -le $budget) {
         return @{
-            Messages = $Messages
-            Trimmed = $false
+            Messages        = $Messages
+            Trimmed         = $false
             EstimatedTokens = $estimatedTokens
-            RemovedCount = 0
+            RemovedCount    = 0
+            Budget          = $budget
+            ContextLimit    = $ContextLimit
         }
     }
     
-    # Need to trim - keep first N and remove oldest messages after that
+    # Need to trim — keep first N (system context) and fill from the end
     $trimmedMessages = @()
+    $evictedMessages = @()
     $removedCount = 0
     
-    # Always keep first N messages (system context)
+    # Always keep first N messages (system context / safe commands)
     $keepFirst = [math]::Min($KeepFirstN, $Messages.Count)
     for ($i = 0; $i -lt $keepFirst; $i++) {
         $trimmedMessages += $Messages[$i]
     }
     
-    # Calculate tokens used by kept first messages
     $firstTokens = 0
     foreach ($msg in $trimmedMessages) {
         $firstTokens += [math]::Ceiling($msg.content.Length / 4)
     }
     
-    # Add messages from the end until we hit target
-    $remainingTokens = $TargetTokens - $firstTokens
+    # Reserve ~200 tokens for the summary message if summarizing
+    $summaryReserve = if ($Summarize) { 200 } else { 0 }
+    $remainingBudget = $budget - $firstTokens - $summaryReserve
     $endMessages = @()
     
+    # Fill from the end (most recent messages first)
     for ($i = $Messages.Count - 1; $i -ge $keepFirst; $i--) {
         $msgTokens = [math]::Ceiling($Messages[$i].content.Length / 4)
-        if ($remainingTokens - $msgTokens -ge 0) {
+        if ($remainingBudget - $msgTokens -ge 0) {
             $endMessages = @($Messages[$i]) + $endMessages
-            $remainingTokens -= $msgTokens
-        } else {
+            $remainingBudget -= $msgTokens
+        }
+        else {
+            $evictedMessages += $Messages[$i]
             $removedCount++
+        }
+    }
+    
+    # Build summary of evicted messages so model retains topic awareness
+    if ($Summarize -and $evictedMessages.Count -gt 0) {
+        $topics = @()
+        foreach ($msg in $evictedMessages) {
+            if ($msg.role -eq 'user') {
+                $snippet = ($msg.content -replace '\s+', ' ').Trim()
+                if ($snippet.Length -gt 80) { $snippet = $snippet.Substring(0, 80) + '...' }
+                $topics += $snippet
+            }
+        }
+        if ($topics.Count -gt 0) {
+            $recapText = "[Earlier in this conversation ($removedCount messages trimmed for context), you discussed: $($topics -join '; ')]"
+            $trimmedMessages += @{ role = 'user'; content = $recapText }
+            $trimmedMessages += @{ role = 'assistant'; content = 'Understood, I recall those earlier topics.' }
         }
     }
     
@@ -586,10 +657,12 @@ function Get-TrimmedMessages {
     }
     
     return @{
-        Messages = $trimmedMessages
-        Trimmed = $true
+        Messages        = $trimmedMessages
+        Trimmed         = $true
         EstimatedTokens = $finalTokens
-        RemovedCount = $removedCount
+        RemovedCount    = $removedCount
+        Budget          = $budget
+        ContextLimit    = $ContextLimit
     }
 }
 
@@ -622,7 +695,7 @@ function Show-ChatProviders {
 
 function Set-DefaultChatProvider {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Provider
     )
     
@@ -705,7 +778,7 @@ function Install-LLMPlugin {
     .SYNOPSIS
     Install an llm plugin
     #>
-    param([Parameter(Mandatory=$true)][string]$Plugin)
+    param([Parameter(Mandatory = $true)][string]$Plugin)
     llm install $Plugin
 }
 
