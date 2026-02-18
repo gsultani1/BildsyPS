@@ -38,352 +38,364 @@ if (-not $global:MCPConnections) { $global:MCPConnections = @{} }
 
 # ===== Intent Metadata for Validation =====
 $global:IntentMetadata = @{
-    'create_docx' = @{
-        Category = 'document'
+    'create_docx'            = @{
+        Category    = 'document'
         Description = 'Create a new Word document'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'name'; Required = $true; Description = 'Document name (without extension)' }
         )
     }
-    'create_xlsx' = @{
-        Category = 'document'
+    'create_xlsx'            = @{
+        Category    = 'document'
         Description = 'Create a new Excel spreadsheet'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'name'; Required = $true; Description = 'Spreadsheet name (without extension)' }
         )
     }
-    'create_csv' = @{
-        Category = 'document'
+    'create_csv'             = @{
+        Category    = 'document'
         Description = 'Create a new CSV file'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'name'; Required = $true; Description = 'CSV file name (without extension)' }
             @{ Name = 'headers'; Required = $false; Description = 'Optional column headers' }
         )
     }
-    'open_file' = @{
-        Category = 'file'
+    'open_file'              = @{
+        Category    = 'file'
         Description = 'Open a file with default application'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'path'; Required = $true; Description = 'Full path to the file' }
         )
     }
-    'search_file' = @{
-        Category = 'file'
+    'search_file'            = @{
+        Category    = 'file'
         Description = 'Search for files matching a term'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'term'; Required = $true; Description = 'Search term' }
             @{ Name = 'path'; Required = $false; Description = 'Directory to search (default: Documents)' }
         )
     }
-    'browse_web' = @{
-        Category = 'web'
+    'browse_web'             = @{
+        Category    = 'web'
         Description = 'Open URL in default browser'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'url'; Required = $true; Description = 'URL to open' }
         )
     }
-    'open_url' = @{
-        Category = 'web'
+    'open_url'               = @{
+        Category    = 'web'
         Description = 'Open URL with browser selection and validation'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'url'; Required = $true; Description = 'URL to open' }
             @{ Name = 'browser'; Required = $false; Description = 'Browser: chrome, firefox, edge, default' }
         )
     }
-    'search_web' = @{
-        Category = 'web'
+    'search_web'             = @{
+        Category    = 'web'
         Description = 'Search Google for a query'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'query'; Required = $true; Description = 'Search query' }
         )
     }
-    'open_word' = @{ Category = 'app'; Description = 'Launch Microsoft Word'; Parameters = @() }
-    'open_excel' = @{ Category = 'app'; Description = 'Launch Microsoft Excel'; Parameters = @() }
-    'open_powerpoint' = @{ Category = 'app'; Description = 'Launch Microsoft PowerPoint'; Parameters = @() }
-    'open_notepad' = @{ Category = 'app'; Description = 'Launch Notepad'; Parameters = @() }
-    'open_calculator' = @{ Category = 'app'; Description = 'Launch Calculator'; Parameters = @() }
-    'open_browser' = @{
-        Category = 'app'
+    'open_word'              = @{ Category = 'app'; Description = 'Launch Microsoft Word'; Parameters = @() }
+    'open_excel'             = @{ Category = 'app'; Description = 'Launch Microsoft Excel'; Parameters = @() }
+    'open_powerpoint'        = @{ Category = 'app'; Description = 'Launch Microsoft PowerPoint'; Parameters = @() }
+    'open_notepad'           = @{ Category = 'app'; Description = 'Launch Notepad'; Parameters = @() }
+    'open_calculator'        = @{ Category = 'app'; Description = 'Launch Calculator'; Parameters = @() }
+    'open_browser'           = @{
+        Category    = 'app'
         Description = 'Launch a specific browser'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'browser'; Required = $false; Description = 'Browser: chrome, firefox, edge (default: edge)' }
         )
     }
-    'open_recent' = @{
-        Category = 'file'
+    'open_recent'            = @{
+        Category    = 'file'
         Description = 'Open recently modified files'
-        Parameters = @(@{ Name = 'count'; Required = $false; Description = 'Number of files to show (default: 10)' })
+        Parameters  = @(@{ Name = 'count'; Required = $false; Description = 'Number of files to show (default: 10)' })
     }
-    'create_and_open_doc' = @{
-        Category = 'workflow'
+    'create_and_open_doc'    = @{
+        Category    = 'workflow'
         Description = 'Create a document and open it in Word'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'name'; Required = $true; Description = 'Document name' }
         )
     }
-    'research_topic' = @{
-        Category = 'workflow'
+    'research_topic'         = @{
+        Category    = 'workflow'
         Description = 'Search web and create notes document for a topic'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'topic'; Required = $true; Description = 'Research topic' }
         )
     }
-    'daily_standup' = @{
-        Category = 'workflow'
+    'daily_standup'          = @{
+        Category    = 'workflow'
         Description = 'Open common apps for daily standup'
-        Parameters = @()
+        Parameters  = @()
     }
     # File System Operations
-    'create_folder' = @{
-        Category = 'filesystem'
+    'create_folder'          = @{
+        Category    = 'filesystem'
         Description = 'Create a new folder'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'path'; Required = $true; Description = 'Folder path to create' }
         )
     }
-    'rename_file' = @{
-        Category = 'filesystem'
+    'rename_file'            = @{
+        Category    = 'filesystem'
         Description = 'Rename a file or folder'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'path'; Required = $true; Description = 'Current file path' }
             @{ Name = 'newname'; Required = $true; Description = 'New name' }
         )
     }
-    'move_file' = @{
-        Category = 'filesystem'
+    'move_file'              = @{
+        Category    = 'filesystem'
         Description = 'Move a file or folder'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'source'; Required = $true; Description = 'Source path' }
             @{ Name = 'destination'; Required = $true; Description = 'Destination path' }
         )
     }
-    'copy_file' = @{
-        Category = 'filesystem'
+    'copy_file'              = @{
+        Category    = 'filesystem'
         Description = 'Copy a file or folder'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'source'; Required = $true; Description = 'Source path' }
             @{ Name = 'destination'; Required = $true; Description = 'Destination path' }
         )
     }
-    'delete_file' = @{
-        Category = 'filesystem'
+    'delete_file'            = @{
+        Category    = 'filesystem'
         Description = 'Delete a file (with confirmation)'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'path'; Required = $true; Description = 'File path to delete' }
         )
     }
-    'list_files' = @{
-        Category = 'filesystem'
+    'list_files'             = @{
+        Category    = 'filesystem'
         Description = 'List files in a directory'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'path'; Required = $false; Description = 'Directory path (default: current)' }
         )
     }
     # Clipboard (actual intents)
-    'clipboard_read' = @{ Category = 'clipboard'; Description = 'Read clipboard content'; Parameters = @() }
-    'clipboard_write' = @{
-        Category = 'clipboard'
+    'clipboard_read'         = @{ Category = 'clipboard'; Description = 'Read clipboard content'; Parameters = @() }
+    'clipboard_write'        = @{
+        Category    = 'clipboard'
         Description = 'Write text to clipboard'
-        Parameters = @(@{ Name = 'text'; Required = $true; Description = 'Text to copy' })
+        Parameters  = @(@{ Name = 'text'; Required = $true; Description = 'Text to copy' })
     }
-    'clipboard_format_json' = @{ Category = 'clipboard'; Description = 'Format clipboard content as JSON'; Parameters = @() }
-    'clipboard_case' = @{
-        Category = 'clipboard'
+    'clipboard_format_json'  = @{ Category = 'clipboard'; Description = 'Format clipboard content as JSON'; Parameters = @() }
+    'clipboard_case'         = @{
+        Category    = 'clipboard'
         Description = 'Change clipboard text case'
-        Parameters = @(@{ Name = 'case'; Required = $true; Description = 'upper, lower, or title' })
+        Parameters  = @(@{ Name = 'case'; Required = $true; Description = 'upper, lower, or title' })
     }
     # Web
-    'web_search' = @{
-        Category = 'web'
+    'web_search'             = @{
+        Category    = 'web'
         Description = 'Search the web'
-        Parameters = @(@{ Name = 'query'; Required = $true; Description = 'Search query' })
+        Parameters  = @(@{ Name = 'query'; Required = $true; Description = 'Search query' })
     }
-    'wikipedia' = @{
-        Category = 'web'
+    'wikipedia'              = @{
+        Category    = 'web'
         Description = 'Search Wikipedia'
-        Parameters = @(@{ Name = 'query'; Required = $true; Description = 'Wikipedia search term' })
+        Parameters  = @(@{ Name = 'query'; Required = $true; Description = 'Wikipedia search term' })
     }
-    'fetch_url' = @{
-        Category = 'web'
+    'fetch_url'              = @{
+        Category    = 'web'
         Description = 'Fetch content from a URL'
-        Parameters = @(@{ Name = 'url'; Required = $true; Description = 'URL to fetch' })
+        Parameters  = @(@{ Name = 'url'; Required = $true; Description = 'URL to fetch' })
     }
     # File
-    'open_folder' = @{
-        Category = 'file'
+    'open_folder'            = @{
+        Category    = 'file'
         Description = 'Open folder in Explorer'
-        Parameters = @(@{ Name = 'path'; Required = $false; Description = 'Folder path (default: current)' })
+        Parameters  = @(@{ Name = 'path'; Required = $false; Description = 'Folder path (default: current)' })
     }
-    'read_file' = @{
-        Category = 'file'
+    'read_file'              = @{
+        Category    = 'file'
         Description = 'Read file contents'
-        Parameters = @(@{ Name = 'path'; Required = $true; Description = 'File path to read' })
+        Parameters  = @(@{ Name = 'path'; Required = $true; Description = 'File path to read' })
     }
-    'file_stats' = @{
-        Category = 'file'
+    'file_stats'             = @{
+        Category    = 'file'
         Description = 'Get file statistics'
-        Parameters = @(@{ Name = 'path'; Required = $true; Description = 'File path' })
+        Parameters  = @(@{ Name = 'path'; Required = $true; Description = 'File path' })
     }
     # App
-    'open_terminal' = @{
-        Category = 'app'
+    'open_terminal'          = @{
+        Category    = 'app'
         Description = 'Open terminal at path'
-        Parameters = @(@{ Name = 'path'; Required = $false; Description = 'Directory path (default: current)' })
+        Parameters  = @(@{ Name = 'path'; Required = $false; Description = 'Directory path (default: current)' })
     }
     # Git
-    'git_status' = @{ Category = 'git'; Description = 'Show git repository status'; Parameters = @() }
-    'git_log' = @{
-        Category = 'git'
+    'git_status'             = @{ Category = 'git'; Description = 'Show git repository status'; Parameters = @() }
+    'git_log'                = @{
+        Category    = 'git'
         Description = 'Show git commit history'
-        Parameters = @(@{ Name = 'count'; Required = $false; Description = 'Number of commits (default: 10)' })
+        Parameters  = @(@{ Name = 'count'; Required = $false; Description = 'Number of commits (default: 10)' })
     }
-    'git_commit' = @{
-        Category = 'git'
+    'git_commit'             = @{
+        Category    = 'git'
         Description = 'Commit staged changes'
-        Parameters = @(@{ Name = 'message'; Required = $true; Description = 'Commit message' })
+        Parameters  = @(@{ Name = 'message'; Required = $true; Description = 'Commit message' })
     }
-    'git_push' = @{
-        Category = 'git'
+    'git_push'               = @{
+        Category    = 'git'
         Description = 'Commit and push changes to remote'
-        Parameters = @(@{ Name = 'message'; Required = $true; Description = 'Commit message' })
+        Parameters  = @(@{ Name = 'message'; Required = $true; Description = 'Commit message' })
     }
-    'git_pull' = @{ Category = 'git'; Description = 'Pull changes from remote'; Parameters = @() }
-    'git_diff' = @{ Category = 'git'; Description = 'Show uncommitted changes'; Parameters = @() }
-    'git_init' = @{
-        Category = 'git'
+    'git_pull'               = @{ Category = 'git'; Description = 'Pull changes from remote'; Parameters = @() }
+    'git_diff'               = @{ Category = 'git'; Description = 'Show uncommitted changes'; Parameters = @() }
+    'git_init'               = @{
+        Category    = 'git'
         Description = 'Initialize a new git repository'
-        Parameters = @(@{ Name = 'path'; Required = $false; Description = 'Path to initialize (default: current directory)' })
+        Parameters  = @(@{ Name = 'path'; Required = $false; Description = 'Path to initialize (default: current directory)' })
     }
     # Calendar
-    'calendar_today' = @{ Category = 'calendar'; Description = 'Show today''s calendar events'; Parameters = @() }
-    'calendar_week' = @{ Category = 'calendar'; Description = 'Show this week''s calendar events'; Parameters = @() }
-    'calendar_create' = @{
-        Category = 'calendar'
+    'calendar_today'         = @{ Category = 'calendar'; Description = 'Show today''s calendar events'; Parameters = @() }
+    'calendar_week'          = @{ Category = 'calendar'; Description = 'Show this week''s calendar events'; Parameters = @() }
+    'calendar_create'        = @{
+        Category    = 'calendar'
         Description = 'Create calendar event'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'subject'; Required = $true; Description = 'Event subject' }
             @{ Name = 'start'; Required = $true; Description = 'Start time (e.g., "2pm", "14:00")' }
             @{ Name = 'duration'; Required = $false; Description = 'Duration in minutes (default: 60)' }
         )
     }
     # MCP
-    'mcp_servers' = @{ Category = 'mcp'; Description = 'List registered MCP servers'; Parameters = @() }
-    'mcp_connect' = @{
-        Category = 'mcp'
+    'mcp_servers'            = @{ Category = 'mcp'; Description = 'List registered MCP servers'; Parameters = @() }
+    'mcp_connect'            = @{
+        Category    = 'mcp'
         Description = 'Connect to an MCP server'
-        Parameters = @(@{ Name = 'server'; Required = $true; Description = 'Server name' })
+        Parameters  = @(@{ Name = 'server'; Required = $true; Description = 'Server name' })
     }
-    'mcp_tools' = @{
-        Category = 'mcp'
+    'mcp_tools'              = @{
+        Category    = 'mcp'
         Description = 'List tools from connected MCP server'
-        Parameters = @(@{ Name = 'server'; Required = $true; Description = 'Server name' })
+        Parameters  = @(@{ Name = 'server'; Required = $true; Description = 'Server name' })
     }
-    'mcp_call' = @{
-        Category = 'mcp'
+    'mcp_call'               = @{
+        Category    = 'mcp'
         Description = 'Call an MCP tool'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'server'; Required = $true; Description = 'Server name' }
             @{ Name = 'tool'; Required = $true; Description = 'Tool name' }
             @{ Name = 'toolArgs'; Required = $false; Description = 'Tool arguments as JSON' }
         )
     }
     # System
-    'service_status' = @{
-        Category = 'system'
+    'service_status'         = @{
+        Category    = 'system'
         Description = 'Check service status'
-        Parameters = @(@{ Name = 'name'; Required = $true; Description = 'Service name' })
+        Parameters  = @(@{ Name = 'name'; Required = $true; Description = 'Service name' })
     }
-    'service_start' = @{
-        Category = 'system'
+    'service_start'          = @{
+        Category    = 'system'
         Description = 'Start a service'
-        Parameters = @(@{ Name = 'name'; Required = $true; Description = 'Service name' })
-        Safety = 'RequiresConfirmation'
+        Parameters  = @(@{ Name = 'name'; Required = $true; Description = 'Service name' })
+        Safety      = 'RequiresConfirmation'
     }
-    'service_stop' = @{
-        Category = 'system'
+    'service_stop'           = @{
+        Category    = 'system'
         Description = 'Stop a service'
-        Parameters = @(@{ Name = 'name'; Required = $true; Description = 'Service name' })
-        Safety = 'RequiresConfirmation'
+        Parameters  = @(@{ Name = 'name'; Required = $true; Description = 'Service name' })
+        Safety      = 'RequiresConfirmation'
     }
-    'service_restart' = @{
-        Category = 'system'
+    'service_restart'        = @{
+        Category    = 'system'
         Description = 'Restart a service'
-        Parameters = @(@{ Name = 'name'; Required = $true; Description = 'Service name' })
-        Safety = 'RequiresConfirmation'
+        Parameters  = @(@{ Name = 'name'; Required = $true; Description = 'Service name' })
+        Safety      = 'RequiresConfirmation'
     }
-    'services_list' = @{
-        Category = 'system'
+    'services_list'          = @{
+        Category    = 'system'
         Description = 'List services'
-        Parameters = @(@{ Name = 'filter'; Required = $false; Description = 'Filter by name' })
+        Parameters  = @(@{ Name = 'filter'; Required = $false; Description = 'Filter by name' })
     }
-    'scheduled_tasks' = @{
-        Category = 'system'
+    'scheduled_tasks'        = @{
+        Category    = 'system'
         Description = 'List scheduled tasks'
-        Parameters = @(@{ Name = 'filter'; Required = $false; Description = 'Filter by name' })
+        Parameters  = @(@{ Name = 'filter'; Required = $false; Description = 'Filter by name' })
     }
-    'scheduled_task_run' = @{
-        Category = 'system'
+    'scheduled_task_run'     = @{
+        Category    = 'system'
         Description = 'Run a scheduled task'
-        Parameters = @(@{ Name = 'name'; Required = $true; Description = 'Task name' })
+        Parameters  = @(@{ Name = 'name'; Required = $true; Description = 'Task name' })
     }
-    'scheduled_task_enable' = @{
-        Category = 'system'
+    'scheduled_task_enable'  = @{
+        Category    = 'system'
         Description = 'Enable a scheduled task'
-        Parameters = @(@{ Name = 'name'; Required = $true; Description = 'Task name' })
+        Parameters  = @(@{ Name = 'name'; Required = $true; Description = 'Task name' })
     }
     'scheduled_task_disable' = @{
-        Category = 'system'
+        Category    = 'system'
         Description = 'Disable a scheduled task'
-        Parameters = @(@{ Name = 'name'; Required = $true; Description = 'Task name' })
-        Safety = 'RequiresConfirmation'
+        Parameters  = @(@{ Name = 'name'; Required = $true; Description = 'Task name' })
+        Safety      = 'RequiresConfirmation'
     }
-    'system_info' = @{ Category = 'system'; Description = 'Show system information (OS, memory, disk)'; Parameters = @() }
-    'network_status' = @{ Category = 'system'; Description = 'Show network status and IP addresses'; Parameters = @() }
-    'process_list' = @{
-        Category = 'system'
+    'system_info'            = @{ Category = 'system'; Description = 'Show system information (OS, memory, disk)'; Parameters = @() }
+    'network_status'         = @{ Category = 'system'; Description = 'Show network status and IP addresses'; Parameters = @() }
+    'process_list'           = @{
+        Category    = 'system'
         Description = 'List running processes'
-        Parameters = @(@{ Name = 'filter'; Required = $false; Description = 'Filter by name' })
+        Parameters  = @(@{ Name = 'filter'; Required = $false; Description = 'Filter by name' })
     }
-    'process_kill' = @{
-        Category = 'system'
+    'process_kill'           = @{
+        Category    = 'system'
         Description = 'Kill a process'
-        Parameters = @(@{ Name = 'name'; Required = $true; Description = 'Process name or ID' })
-        Safety = 'RequiresConfirmation'
+        Parameters  = @(@{ Name = 'name'; Required = $true; Description = 'Process name or ID' })
+        Safety      = 'RequiresConfirmation'
     }
     # Workflow
-    'run_workflow' = @{
-        Category = 'workflow'
+    'run_workflow'           = @{
+        Category    = 'workflow'
         Description = 'Run a multi-step workflow'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'name'; Required = $true; Description = 'Workflow name' }
             @{ Name = 'params'; Required = $false; Description = 'Workflow parameters as JSON' }
         )
     }
-    'list_workflows' = @{ Category = 'workflow'; Description = 'List available workflows'; Parameters = @() }
+    'schedule_workflow'      = @{
+        Category    = 'workflow'
+        Description = 'Schedule a workflow to run automatically'
+        Parameters  = @(
+            @{ Name = 'workflow'; Required = $true; Description = 'Workflow name' }
+            @{ Name = 'schedule'; Required = $true; Description = 'Schedule type: daily, weekly, interval, startup, logon' }
+            @{ Name = 'time'; Required = $false; Description = 'Time for daily/weekly (e.g. "09:00")' }
+            @{ Name = 'interval'; Required = $false; Description = 'Interval (e.g. "1h", "30m")' }
+            @{ Name = 'days'; Required = $false; Description = 'Days for weekly (e.g. "Mon,Tue,Fri")' }
+        )
+        Safety      = 'RequiresConfirmation'
+    }
+    'list_workflows'         = @{ Category = 'workflow'; Description = 'List available workflows'; Parameters = @() }
     
     # File content operations
-    'append_to_file' = @{
-        Category = 'filesystem'
+    'append_to_file'         = @{
+        Category    = 'filesystem'
         Description = 'Append content to an existing file'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'path'; Required = $true; Description = 'Path to the file' }
             @{ Name = 'content'; Required = $true; Description = 'Content to append' }
         )
-        SafetyTier = 'RequiresConfirmation'
+        SafetyTier  = 'RequiresConfirmation'
     }
-    'write_to_file' = @{
-        Category = 'filesystem'
+    'write_to_file'          = @{
+        Category    = 'filesystem'
         Description = 'Write content to a file (creates or overwrites)'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'path'; Required = $true; Description = 'Path to the file' }
             @{ Name = 'content'; Required = $true; Description = 'Content to write' }
         )
-        SafetyTier = 'RequiresConfirmation'
+        SafetyTier  = 'RequiresConfirmation'
     }
-    'read_file_content' = @{
-        Category = 'filesystem'
+    'read_file_content'      = @{
+        Category    = 'filesystem'
         Description = 'Read content from a text file'
-        Parameters = @(
+        Parameters  = @(
             @{ Name = 'path'; Required = $true; Description = 'Path to the file' }
             @{ Name = 'lines'; Required = $false; Description = 'Max lines to read (default 100)' }
         )
@@ -394,15 +406,15 @@ $global:IntentMetadata = @{
 $global:IntentCategories = @{}
 foreach ($category in $global:CategoryDefinitions.Keys) {
     $global:IntentCategories[$category] = @{
-        Name = $global:CategoryDefinitions[$category].Name
+        Name        = $global:CategoryDefinitions[$category].Name
         Description = $global:CategoryDefinitions[$category].Description
-        Intents = @($global:IntentMetadata.Keys | Where-Object { $global:IntentMetadata[$_].Category -eq $category } | Sort-Object)
+        Intents     = @($global:IntentMetadata.Keys | Where-Object { $global:IntentMetadata[$_].Category -eq $category } | Sort-Object)
     }
 }
 
 $global:IntentAliases = @{
     # ===== Document Operations =====
-    "create_docx" = { 
+    "create_docx"            = { 
         param($name, $content)
         if (-not $name) {
             return @{ Success = $false; Output = "Error: name parameter required"; Error = $true }
@@ -434,7 +446,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "create_xlsx" = { 
+    "create_xlsx"            = { 
         param($name, $sheetName)
         if (-not $name) {
             return @{ Success = $false; Output = "Error: name parameter required"; Error = $true }
@@ -466,7 +478,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "create_csv" = {
+    "create_csv"             = {
         param($name, $headers)
         if (-not $name) {
             return @{ Success = $false; Output = "Error: name parameter required"; Error = $true }
@@ -500,7 +512,7 @@ $global:IntentAliases = @{
     }
     
     # ===== File Operations =====
-    "open_file" = { 
+    "open_file"              = { 
         param($path)
         if (-not $path) {
             return @{ Success = $false; Output = "Error: path parameter required"; Error = $true }
@@ -520,7 +532,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "search_file" = { 
+    "search_file"            = { 
         param($term, $path)
         if (-not $term) {
             return @{ Success = $false; Output = "Error: term parameter required"; Error = $true }
@@ -545,8 +557,8 @@ $global:IntentAliases = @{
             
             if ($isPwsh7) {
                 $results = Get-ChildItem -Path $resolvedPath -Recurse -Depth $maxDepth -Filter "*$term*" -ErrorAction SilentlyContinue | 
-                    Select-Object -First $maxResults |
-                    Select-Object -ExpandProperty FullName
+                Select-Object -First $maxResults |
+                Select-Object -ExpandProperty FullName
             }
             else {
                 $results = @()
@@ -572,11 +584,11 @@ $global:IntentAliases = @{
             }
             
             @{
-                Success = $true
-                Output = "Found $($results.Count) items (max depth: $maxDepth, limit: $maxResults)"
-                Results = $results
+                Success    = $true
+                Output     = "Found $($results.Count) items (max depth: $maxDepth, limit: $maxResults)"
+                Results    = $results
                 SearchPath = $resolvedPath
-                Term = $term
+                Term       = $term
             }
         }
         catch {
@@ -584,22 +596,22 @@ $global:IntentAliases = @{
         }
     }
     
-    "open_recent" = {
+    "open_recent"            = {
         param($count)
         if (-not $count) { $count = 5 }
         $recentPath = "$env:APPDATA\Microsoft\Windows\Recent"
         $recent = Get-ChildItem $recentPath -Filter "*.lnk" -ErrorAction SilentlyContinue | 
-            Sort-Object LastWriteTime -Descending | 
-            Select-Object -First $count
+        Sort-Object LastWriteTime -Descending | 
+        Select-Object -First $count
         @{
             Success = $true
-            Output = "Recent $count files"
+            Output  = "Recent $count files"
             Results = $recent | ForEach-Object { $_.Name -replace '\.lnk$', '' }
         }
     }
     
     # ===== Web Operations =====
-    "browse_web" = { 
+    "browse_web"             = { 
         param($url)
         if (-not $url) {
             return @{ Success = $false; Output = "Error: url parameter required"; Error = $true }
@@ -619,7 +631,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "open_url" = {
+    "open_url"               = {
         param($url, $browser)
         if (-not $url) {
             return @{ Success = $false; Output = "Error: url parameter required"; Error = $true }
@@ -646,9 +658,9 @@ $global:IntentAliases = @{
         }
         
         $browserCommands = @{
-            'chrome' = @{ Windows = 'chrome'; macOS = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'; Linux = 'google-chrome' }
+            'chrome'  = @{ Windows = 'chrome'; macOS = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'; Linux = 'google-chrome' }
             'firefox' = @{ Windows = 'firefox'; macOS = '/Applications/Firefox.app/Contents/MacOS/firefox'; Linux = 'firefox' }
-            'edge' = @{ Windows = 'msedge'; macOS = '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'; Linux = 'microsoft-edge' }
+            'edge'    = @{ Windows = 'msedge'; macOS = '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'; Linux = 'microsoft-edge' }
         }
         
         $browserKey = $browser.ToLower()
@@ -662,7 +674,8 @@ $global:IntentAliases = @{
         try {
             if ($onWindows) {
                 Start-Process $browserExe -ArgumentList $validatedUrl
-            } else {
+            }
+            else {
                 & $browserExe $validatedUrl
             }
             @{ Success = $true; Output = "Opened $validatedUrl in $browser"; Browser = $browser; URL = $validatedUrl }
@@ -672,7 +685,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "open_browser_search" = { 
+    "open_browser_search"    = { 
         # Opens browser with Google search - AI cannot see results
         param($query)
         if (-not $query) {
@@ -690,7 +703,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "web_search" = {
+    "web_search"             = {
         # Search using DuckDuckGo API and return results to AI
         param($query)
         if (-not $query) {
@@ -700,12 +713,13 @@ $global:IntentAliases = @{
         if ($result.Success) {
             $output = Format-SearchResultsForAI $result
             @{ Success = $true; Output = $output; ResultCount = $result.ResultCount; Results = $result.Results }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
-    "search_web" = {
+    "search_web"             = {
         # Alias for web_search (backward compatibility)
         param($query)
         if (-not $query) {
@@ -715,12 +729,13 @@ $global:IntentAliases = @{
         if ($result.Success) {
             $output = Format-SearchResultsForAI $result
             @{ Success = $true; Output = $output; ResultCount = $result.ResultCount; Results = $result.Results }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
-    "wikipedia" = {
+    "wikipedia"              = {
         # Search Wikipedia and return summary
         param($query)
         if (-not $query) {
@@ -730,12 +745,13 @@ $global:IntentAliases = @{
         if ($result.Success) {
             $output = Format-SearchResultsForAI $result
             @{ Success = $true; Output = $output; ResultCount = $result.ResultCount }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
-    "fetch_url" = {
+    "fetch_url"              = {
         # Fetch and return content from a URL
         param($url)
         if (-not $url) {
@@ -744,22 +760,24 @@ $global:IntentAliases = @{
         $result = Get-WebPageContent -Url $url -MaxLength 3000
         if ($result.Success) {
             @{ Success = $true; Output = "Content from $url :`n`n$($result.Content)"; Length = $result.Length }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
     # ===== CLIPBOARD OPERATIONS =====
-    "clipboard_read" = {
+    "clipboard_read"         = {
         $result = Get-ClipboardContent
         if ($result.Success) {
             $preview = if ($result.Content.Length -gt 1000) { $result.Content.Substring(0, 1000) + "..." } else { $result.Content }
             @{ Success = $true; Output = "Clipboard ($($result.Type), $($result.Length) chars, $($result.Lines) lines):`n$preview" }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
-    "clipboard_write" = {
+    "clipboard_write"        = {
         param($text)
         if (-not $text) {
             return @{ Success = $false; Output = "Error: text parameter required"; Error = $true }
@@ -768,22 +786,24 @@ $global:IntentAliases = @{
         @{ Success = $result.Success; Output = $result.Message }
     }
     
-    "clipboard_format_json" = {
+    "clipboard_format_json"  = {
         $result = Convert-ClipboardJson
         if ($result.Success) {
             @{ Success = $true; Output = "$($result.Output)`n`nPreview:`n$($result.Preview)" }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
-    "clipboard_case" = {
+    "clipboard_case"         = {
         param($case)
         if (-not $case) { $case = "upper" }
         $result = Convert-ClipboardCase -Case $case
         if ($result.Success) {
             @{ Success = $true; Output = "$($result.Output)`n`nPreview: $($result.Preview)" }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
@@ -803,7 +823,7 @@ $global:IntentAliases = @{
     # }
     
     # ===== FILE CONTENT ANALYSIS =====
-    "read_file" = {
+    "read_file"              = {
         param($path)
         if (-not $path) {
             return @{ Success = $false; Output = "Error: path parameter required"; Error = $true }
@@ -816,12 +836,13 @@ $global:IntentAliases = @{
             if ($result.Content) { $output += "`n`n$($result.Content)" }
             if ($result.Preview) { $output += "`n`n$($result.Preview)" }
             @{ Success = $true; Output = $output }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
-    "file_stats" = {
+    "file_stats"             = {
         param($path)
         if (-not $path) {
             return @{ Success = $false; Output = "Error: path parameter required"; Error = $true }
@@ -831,13 +852,14 @@ $global:IntentAliases = @{
             $output = "File: $($result.Name)`nPath: $($result.Path)`nSize: $($result.Size)`nCreated: $($result.Created)`nModified: $($result.Modified)"
             if ($result.Lines) { $output += "`nLines: $($result.Lines)`nWords: $($result.Words)`nCharacters: $($result.Characters)" }
             @{ Success = $true; Output = $output }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
     # ===== GIT INTEGRATION =====
-    "git_status" = {
+    "git_status"             = {
         param($path)
         if (-not $path) { $path = "." }
         $result = Get-GitStatus -Path $path
@@ -848,12 +870,13 @@ $global:IntentAliases = @{
                 $output += "`n`nChanged files:`n$($result.StatusLines -join "`n")"
             }
             @{ Success = $true; Output = $output }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
-    "git_log" = {
+    "git_log"                = {
         param($count)
         if (-not $count) { $count = 10 }
         $result = Get-GitLog -Count $count
@@ -863,12 +886,13 @@ $global:IntentAliases = @{
                 $output += "`n$($c.Hash) - $($c.Message) ($($c.Author), $($c.Time))"
             }
             @{ Success = $true; Output = $output }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
-    "git_commit" = {
+    "git_commit"             = {
         param($message)
         if (-not $message) {
             return @{ Success = $false; Output = "Error: message parameter required"; Error = $true }
@@ -876,12 +900,13 @@ $global:IntentAliases = @{
         $result = Invoke-GitCommit -Message $message
         if ($result.Success) {
             @{ Success = $true; Output = $result.Message }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
-    "git_push" = {
+    "git_push"               = {
         param($message)
         if (-not $message) {
             return @{ Success = $false; Output = "Error: message parameter required for commit"; Error = $true }
@@ -892,32 +917,35 @@ $global:IntentAliases = @{
             if ($result.Pushed) { $output += "`nPushed to remote successfully" }
             elseif ($result.PushError) { $output += "`nPush failed: $($result.PushError)" }
             @{ Success = $true; Output = $output }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
-    "git_pull" = {
+    "git_pull"               = {
         $result = Invoke-GitPull
         @{ Success = $result.Success; Output = $result.Output }
     }
     
-    "git_diff" = {
+    "git_diff"               = {
         param($staged)
         $isStaged = $staged -eq "staged" -or $staged -eq "true"
         $result = Get-GitDiff -Staged:$isStaged
         if ($result.Success) {
             if ($result.Diff) {
                 @{ Success = $true; Output = "Diff:`n$($result.Diff)" }
-            } else {
+            }
+            else {
                 @{ Success = $true; Output = $result.Message }
             }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Message; Error = $true }
         }
     }
     
-    "git_init" = {
+    "git_init"               = {
         param($path)
         if (-not $path) { $path = Get-Location }
         try {
@@ -926,17 +954,19 @@ $global:IntentAliases = @{
             Pop-Location
             if ($LASTEXITCODE -eq 0) {
                 @{ Success = $true; Output = "Initialized git repository in: $path" }
-            } else {
+            }
+            else {
                 @{ Success = $false; Output = "Failed to init: $output"; Error = $true }
             }
-        } catch {
+        }
+        catch {
             Pop-Location
             @{ Success = $false; Output = "Error: $($_.Exception.Message)"; Error = $true }
         }
     }
     
     # ===== MCP (Model Context Protocol) =====
-    "mcp_servers" = {
+    "mcp_servers"            = {
         $servers = Get-MCPServers
         if ($servers) {
             $output = "Registered MCP Servers:`n"
@@ -945,12 +975,13 @@ $global:IntentAliases = @{
                 $output += "`n$($s.Name) $status - $($s.Description)"
             }
             @{ Success = $true; Output = $output }
-        } else {
+        }
+        else {
             @{ Success = $true; Output = "No MCP servers registered. Run: mcp-register" }
         }
     }
     
-    "mcp_connect" = {
+    "mcp_connect"            = {
         param($server)
         if (-not $server) {
             return @{ Success = $false; Output = "Error: server name required"; Error = $true }
@@ -959,12 +990,13 @@ $global:IntentAliases = @{
         if ($result) {
             $toolList = ($result.Tools | ForEach-Object { $_.name }) -join ", "
             @{ Success = $true; Output = "Connected to $server. Tools: $toolList" }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = "Failed to connect to $server"; Error = $true }
         }
     }
     
-    "mcp_call" = {
+    "mcp_call"               = {
         param($server, $tool, $toolArgs)
         if (-not $server -or -not $tool) {
             return @{ Success = $false; Output = "Error: server and tool parameters required"; Error = $true }
@@ -975,17 +1007,19 @@ $global:IntentAliases = @{
                 $jsonObj = $toolArgs | ConvertFrom-Json
                 # Convert PSObject to hashtable (PS 5.1 compatible)
                 $jsonObj.PSObject.Properties | ForEach-Object { $arguments[$_.Name] = $_.Value }
-            } catch { }
+            }
+            catch { }
         }
         $result = Invoke-MCPTool -ServerName $server -ToolName $tool -Arguments $arguments
         if ($result.Success) {
             @{ Success = $true; Output = $result.Output }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = $result.Error; Error = $true }
         }
     }
     
-    "mcp_tools" = {
+    "mcp_tools"              = {
         param($server)
         if (-not $server) {
             return @{ Success = $false; Output = "Error: server name required"; Error = $true }
@@ -1002,12 +1036,13 @@ $global:IntentAliases = @{
     }
     
     # ===== CALENDAR (OUTLOOK) =====
-    "calendar_today" = {
+    "calendar_today"         = {
         $result = Get-OutlookCalendar -Today
         if ($result.Success) {
             if ($result.Count -eq 0) {
                 @{ Success = $true; Output = "No events scheduled for today" }
-            } else {
+            }
+            else {
                 $output = "Today's events ($($result.Count)):`n"
                 foreach ($e in $result.Events) {
                     $output += "`n- $($e.Start.Substring(11)) - $($e.Subject)"
@@ -1016,17 +1051,19 @@ $global:IntentAliases = @{
                 }
                 @{ Success = $true; Output = $output }
             }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = "$($result.Message). $($result.Hint)"; Error = $true }
         }
     }
     
-    "calendar_week" = {
+    "calendar_week"          = {
         $result = Get-OutlookCalendar -Days 7
         if ($result.Success) {
             if ($result.Count -eq 0) {
                 @{ Success = $true; Output = "No events scheduled for the next 7 days" }
-            } else {
+            }
+            else {
                 $output = "Events for $($result.DateRange) ($($result.Count) total):`n"
                 $currentDate = ""
                 foreach ($e in $result.Events) {
@@ -1040,12 +1077,13 @@ $global:IntentAliases = @{
                 }
                 @{ Success = $true; Output = $output }
             }
-        } else {
+        }
+        else {
             @{ Success = $false; Output = "$($result.Message). $($result.Hint)"; Error = $true }
         }
     }
     
-    "calendar_create" = {
+    "calendar_create"        = {
         param($subject, $start, $duration)
         if (-not $subject) {
             return @{ Success = $false; Output = "Error: subject parameter required"; Error = $true }
@@ -1059,7 +1097,8 @@ $global:IntentAliases = @{
             $result = New-OutlookAppointment -Subject $subject -Start $startDate -DurationMinutes $durationMins
             if ($result.Success) {
                 @{ Success = $true; Output = "$($result.Message) at $($result.Start) for $($result.Duration)" }
-            } else {
+            }
+            else {
                 @{ Success = $false; Output = $result.Message; Error = $true }
             }
         }
@@ -1069,32 +1108,32 @@ $global:IntentAliases = @{
     }
     
     # ===== Application Launching =====
-    "open_word" = { 
+    "open_word"              = { 
         Start-Process winword -ErrorAction SilentlyContinue
         @{ Success = $true; Output = "Launched Microsoft Word" }
     }
     
-    "open_excel" = { 
+    "open_excel"             = { 
         Start-Process excel -ErrorAction SilentlyContinue
         @{ Success = $true; Output = "Launched Microsoft Excel" }
     }
     
-    "open_powerpoint" = { 
+    "open_powerpoint"        = { 
         Start-Process powerpnt -ErrorAction SilentlyContinue
         @{ Success = $true; Output = "Launched Microsoft PowerPoint" }
     }
     
-    "open_notepad" = { 
+    "open_notepad"           = { 
         Start-Process notepad
         @{ Success = $true; Output = "Launched Notepad" }
     }
     
-    "open_calculator" = { 
+    "open_calculator"        = { 
         Start-Process calc
         @{ Success = $true; Output = "Launched Calculator" }
     }
     
-    "open_folder" = {
+    "open_folder"            = {
         param($path)
         if (-not $path) { $path = Get-Location }
         
@@ -1116,7 +1155,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "open_terminal" = {
+    "open_terminal"          = {
         param($path)
         if (-not $path) { $path = Get-Location }
         
@@ -1146,13 +1185,13 @@ $global:IntentAliases = @{
         }
     }
     
-    "open_browser" = {
+    "open_browser"           = {
         param($browser)
         if (-not $browser) { $browser = "edge" }
         $browsers = @{
-            'chrome' = 'chrome'
+            'chrome'  = 'chrome'
             'firefox' = 'firefox'
-            'edge' = 'msedge'
+            'edge'    = 'msedge'
         }
         $exe = $browsers[$browser.ToLower()]
         if (-not $exe) {
@@ -1163,7 +1202,7 @@ $global:IntentAliases = @{
     }
     
     # ===== Workflow/Composite Intents =====
-    "create_and_open_doc" = {
+    "create_and_open_doc"    = {
         param($name)
         if (-not $name) {
             return @{ Success = $false; Output = "Error: name parameter required"; Error = $true }
@@ -1180,13 +1219,13 @@ $global:IntentAliases = @{
         
         @{
             Success = $openResult.Success
-            Output = "Created and opened: $($createResult.Path)"
-            Path = $createResult.Path
-            Steps = @($createResult, $openResult)
+            Output  = "Created and opened: $($createResult.Path)"
+            Path    = $createResult.Path
+            Steps   = @($createResult, $openResult)
         }
     }
     
-    "research_topic" = {
+    "research_topic"         = {
         param($topic)
         if (-not $topic) {
             return @{ Success = $false; Output = "Error: topic parameter required"; Error = $true }
@@ -1201,15 +1240,15 @@ $global:IntentAliases = @{
         $createResult = & $global:IntentAliases["create_docx"] $notesName
         
         @{
-            Success = $true
-            Output = "Researching '$topic' - opened search and created notes: $($createResult.Path)"
+            Success   = $true
+            Output    = "Researching '$topic' - opened search and created notes: $($createResult.Path)"
             SearchURL = $searchResult.URL
             NotesPath = $createResult.Path
-            Steps = @($searchResult, $createResult)
+            Steps     = @($searchResult, $createResult)
         }
     }
     
-    "daily_standup" = {
+    "daily_standup"          = {
         # Chain: open multiple apps for daily standup
         $results = @()
         
@@ -1221,12 +1260,12 @@ $global:IntentAliases = @{
         
         @{
             Success = $true
-            Output = "Daily standup setup complete - opened browser, Word, and Excel"
-            Steps = $results
+            Output  = "Daily standup setup complete - opened browser, Word, and Excel"
+            Steps   = $results
         }
     }
     
-    "run_workflow" = {
+    "run_workflow"           = {
         param($name, $params)
         if (-not $name) {
             $available = $global:Workflows.Keys -join ", "
@@ -1238,14 +1277,134 @@ $global:IntentAliases = @{
             try {
                 $jsonObj = $params | ConvertFrom-Json
                 $jsonObj.PSObject.Properties | ForEach-Object { $workflowParams[$_.Name] = $_.Value }
-            } catch { }
+            }
+            catch { }
         }
         
         $result = Invoke-Workflow -Name $name -Params $workflowParams
         @{ Success = $result.Success; Output = "Workflow '$name' completed"; Results = $result.Results }
     }
     
-    "list_workflows" = {
+    "schedule_workflow"      = {
+        param($workflow, $schedule, $time, $interval, $days)
+        
+        # 1. Validate inputs
+        if (-not $workflow) { return @{ Success = $false; Output = "Error: workflow name required"; Error = $true } }
+        if (-not $global:Workflows.ContainsKey($workflow)) {
+            return @{ Success = $false; Output = "Error: Workflow '$workflow' not found"; Error = $true }
+        }
+        
+        if (-not $schedule) { return @{ Success = $false; Output = "Error: schedule type required"; Error = $true } }
+        $validSchedules = @('daily', 'weekly', 'interval', 'startup', 'logon')
+        if ($schedule -notin $validSchedules) {
+            return @{ Success = $false; Output = "Error: Invalid schedule '$schedule'. Use: $($validSchedules -join ', ')"; Error = $true }
+        }
+        
+        # 2. Build Trigger
+        try {
+            $trigger = switch ($schedule) {
+                'daily' {
+                    if (-not $time) { throw "Time required for daily schedule (e.g. '09:00')" }
+                    New-ScheduledTaskTrigger -Daily -At $time
+                }
+                'weekly' {
+                    if (-not $time) { throw "Time required for weekly schedule" }
+                    if (-not $days) { throw "Days required for weekly schedule (e.g. 'Mon,Fri')" }
+                    # New-ScheduledTaskTrigger handles string days (Mon, Tue, etc.)
+                    New-ScheduledTaskTrigger -Weekly -Days $days -At $time
+                }
+                'interval' {
+                    if (-not $interval) { throw "Interval required (e.g. '1h', '30m')" }
+                    
+                    # Parse custom interval format
+                    $timespan = $null
+                    if ($interval -match '^(\d+)([hms])$') {
+                        $val = [int]$matches[1]
+                        $unit = $matches[2]
+                        if ($unit -eq 'h') { $timespan = New-TimeSpan -Hours $val }
+                        elseif ($unit -eq 'm') { $timespan = New-TimeSpan -Minutes $val }
+                        elseif ($unit -eq 's') { $timespan = New-TimeSpan -Seconds $val }
+                    }
+                    else {
+                        # Try standard Parse
+                        try { $timespan = [timespan]::Parse($interval) } catch {}
+                    }
+                    
+                    if (-not $timespan) { throw "Invalid interval format '$interval'. Use '1h', '30m', or 'HH:MM:SS'" }
+                    
+                    # Create trigger: Once (starting now) + Repetition
+                    New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval $timespan
+                }
+                'startup' { New-ScheduledTaskTrigger -AtStartup }
+                'logon' { New-ScheduledTaskTrigger -AtLogon }
+            }
+        }
+        catch {
+            return @{ Success = $false; Output = "Error creating trigger: $($_.Exception.Message)"; Error = $true }
+        }
+        
+        # 3. Build Action — generate a self-contained bootstrap script
+        # Scheduled tasks run in isolated sessions with NO profile, so we
+        # must explicitly dot-source every module the workflow needs.
+        $pwshPath = (Get-Process -Id $PID).Path
+        $modulesPath = $global:ModulesPath  # Resolved NOW while we have context
+        $errorLog = "$env:TEMP\shelix_task_errors.log"
+        
+        # Create scripts directory for scheduled task bootstrap scripts
+        $scriptsDir = Join-Path (Split-Path $modulesPath -Parent) "ScheduledScripts"
+        if (-not (Test-Path $scriptsDir)) { New-Item -ItemType Directory -Path $scriptsDir -Force | Out-Null }
+        
+        $scriptPath = Join-Path $scriptsDir "Shelix_$workflow.ps1"
+        
+        # Build bootstrap script content with absolute paths
+        $scriptContent = @"
+# Auto-generated by Shelix schedule_workflow — do not edit
+# Workflow: $workflow | Schedule: $schedule | Created: $(Get-Date -Format 'yyyy-MM-dd HH:mm')
+`$ErrorActionPreference = 'Stop'
+`$errorLog = '$errorLog'
+try {
+    # Dot-source required modules (absolute paths, no `$PROFILE dependency)
+    `$global:ModulesPath = '$modulesPath'
+    . '$modulesPath\ConfigLoader.ps1'
+    . '$modulesPath\PlatformUtils.ps1'
+    . '$modulesPath\SecurityUtils.ps1'
+    . '$modulesPath\CommandValidation.ps1'
+    . '$modulesPath\SystemUtilities.ps1'
+    . '$modulesPath\ProductivityTools.ps1'
+    . '$modulesPath\IntentAliasSystem.ps1'
+
+    Invoke-Workflow -Name '$workflow'
+} catch {
+    "[`$(Get-Date)] SHELIX TASK ERROR ($workflow): `$(`$_.Exception.Message)" | Out-File `$errorLog -Append
+    "`$(`$_.ScriptStackTrace)" | Out-File `$errorLog -Append
+}
+"@
+        Set-Content -Path $scriptPath -Value $scriptContent -Encoding UTF8
+        
+        $action = New-ScheduledTaskAction -Execute $pwshPath -Argument "-WindowStyle Hidden -NonInteractive -File `"$scriptPath`""
+        
+        # 4. Register Task under \Shelix folder
+        $taskFolder = "\Shelix"
+        $taskName = "Workflow_$workflow"
+        $description = "Shelix automated workflow '$workflow' ($schedule)"
+        
+        try {
+            Register-ScheduledTask -TaskName $taskName -TaskPath $taskFolder -Action $action -Trigger $trigger -Description $description -Force | Out-Null
+            
+            @{ 
+                Success    = $true 
+                Output     = "Scheduled workflow '$workflow' as task '$taskName' in '$taskFolder' ($schedule)"
+                TaskName   = $taskName
+                TaskPath   = $taskFolder
+                ScriptPath = $scriptPath
+            }
+        }
+        catch {
+            @{ Success = $false; Output = "Failed to register task: $($_.Exception.Message)"; Error = $true }
+        }
+    }
+    
+    "list_workflows"         = {
         $output = "Available workflows:`n"
         foreach ($name in $global:Workflows.Keys | Sort-Object) {
             $wf = $global:Workflows[$name]
@@ -1257,7 +1416,7 @@ $global:IntentAliases = @{
     # ===== System Automation =====
     # "Restart the print spooler service" - now you can
     
-    "service_status" = {
+    "service_status"         = {
         param($name)
         if (-not $name) {
             return @{ Success = $false; Output = "Error: service name required"; Error = $true }
@@ -1265,18 +1424,19 @@ $global:IntentAliases = @{
         try {
             $svc = Get-Service -Name $name -ErrorAction Stop
             @{ 
-                Success = $true
-                Output = "Service '$($svc.DisplayName)': $($svc.Status)"
-                Name = $svc.Name
+                Success     = $true
+                Output      = "Service '$($svc.DisplayName)': $($svc.Status)"
+                Name        = $svc.Name
                 DisplayName = $svc.DisplayName
-                Status = $svc.Status.ToString()
+                Status      = $svc.Status.ToString()
             }
-        } catch {
+        }
+        catch {
             @{ Success = $false; Output = "Service not found: $name"; Error = $true }
         }
     }
     
-    "service_start" = {
+    "service_start"          = {
         param($name)
         if (-not $name) {
             return @{ Success = $false; Output = "Error: service name required"; Error = $true }
@@ -1284,12 +1444,13 @@ $global:IntentAliases = @{
         try {
             Start-Service -Name $name -ErrorAction Stop
             @{ Success = $true; Output = "Started service: $name" }
-        } catch {
+        }
+        catch {
             @{ Success = $false; Output = "Failed to start service: $($_.Exception.Message)"; Error = $true }
         }
     }
     
-    "service_stop" = {
+    "service_stop"           = {
         param($name)
         if (-not $name) {
             return @{ Success = $false; Output = "Error: service name required"; Error = $true }
@@ -1297,12 +1458,13 @@ $global:IntentAliases = @{
         try {
             Stop-Service -Name $name -Force -ErrorAction Stop
             @{ Success = $true; Output = "Stopped service: $name" }
-        } catch {
+        }
+        catch {
             @{ Success = $false; Output = "Failed to stop service: $($_.Exception.Message)"; Error = $true }
         }
     }
     
-    "service_restart" = {
+    "service_restart"        = {
         param($name)
         if (-not $name) {
             return @{ Success = $false; Output = "Error: service name required"; Error = $true }
@@ -1310,12 +1472,13 @@ $global:IntentAliases = @{
         try {
             Restart-Service -Name $name -Force -ErrorAction Stop
             @{ Success = $true; Output = "Restarted service: $name" }
-        } catch {
+        }
+        catch {
             @{ Success = $false; Output = "Failed to restart service: $($_.Exception.Message)"; Error = $true }
         }
     }
     
-    "services_list" = {
+    "services_list"          = {
         param($filter)
         $services = Get-Service
         if ($filter) {
@@ -1333,7 +1496,7 @@ $global:IntentAliases = @{
         @{ Success = $true; Output = $output }
     }
     
-    "scheduled_tasks" = {
+    "scheduled_tasks"        = {
         param($filter)
         try {
             $tasks = Get-ScheduledTask -ErrorAction Stop
@@ -1346,12 +1509,13 @@ $global:IntentAliases = @{
                 $output += "`n  [$state] $($task.TaskName)"
             }
             @{ Success = $true; Output = $output }
-        } catch {
+        }
+        catch {
             @{ Success = $false; Output = "Failed to get scheduled tasks: $($_.Exception.Message)"; Error = $true }
         }
     }
     
-    "scheduled_task_run" = {
+    "scheduled_task_run"     = {
         param($name)
         if (-not $name) {
             return @{ Success = $false; Output = "Error: task name required"; Error = $true }
@@ -1359,12 +1523,13 @@ $global:IntentAliases = @{
         try {
             Start-ScheduledTask -TaskName $name -ErrorAction Stop
             @{ Success = $true; Output = "Started scheduled task: $name" }
-        } catch {
+        }
+        catch {
             @{ Success = $false; Output = "Failed to run task: $($_.Exception.Message)"; Error = $true }
         }
     }
     
-    "scheduled_task_enable" = {
+    "scheduled_task_enable"  = {
         param($name)
         if (-not $name) {
             return @{ Success = $false; Output = "Error: task name required"; Error = $true }
@@ -1372,7 +1537,8 @@ $global:IntentAliases = @{
         try {
             Enable-ScheduledTask -TaskName $name -ErrorAction Stop
             @{ Success = $true; Output = "Enabled scheduled task: $name" }
-        } catch {
+        }
+        catch {
             @{ Success = $false; Output = "Failed to enable task: $($_.Exception.Message)"; Error = $true }
         }
     }
@@ -1385,12 +1551,13 @@ $global:IntentAliases = @{
         try {
             Disable-ScheduledTask -TaskName $name -ErrorAction Stop
             @{ Success = $true; Output = "Disabled scheduled task: $name" }
-        } catch {
+        }
+        catch {
             @{ Success = $false; Output = "Failed to disable task: $($_.Exception.Message)"; Error = $true }
         }
     }
     
-    "system_info" = {
+    "system_info"            = {
         try {
             $os = Get-CimInstance Win32_OperatingSystem
             $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
@@ -1406,12 +1573,13 @@ $global:IntentAliases = @{
             $output += "  RAM: $memFree GB free / $mem GB total`n"
             $output += "  Disk C: $diskFree GB free / $diskTotal GB total"
             @{ Success = $true; Output = $output }
-        } catch {
+        }
+        catch {
             @{ Success = $false; Output = "Failed to get system info: $($_.Exception.Message)"; Error = $true }
         }
     }
     
-    "network_status" = {
+    "network_status"         = {
         try {
             $adapters = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -ne '127.0.0.1' }
             $output = "Network Status:`n"
@@ -1421,12 +1589,13 @@ $global:IntentAliases = @{
             $internet = Test-Connection -ComputerName 8.8.8.8 -Count 1 -Quiet
             $output += "  Internet: $(if ($internet) { 'Connected' } else { 'Disconnected' })"
             @{ Success = $true; Output = $output }
-        } catch {
+        }
+        catch {
             @{ Success = $false; Output = "Failed to get network status: $($_.Exception.Message)"; Error = $true }
         }
     }
     
-    "process_list" = {
+    "process_list"           = {
         param($filter)
         $procs = Get-Process | Sort-Object CPU -Descending
         if ($filter) {
@@ -1443,7 +1612,7 @@ $global:IntentAliases = @{
         @{ Success = $true; Output = $output }
     }
     
-    "process_kill" = {
+    "process_kill"           = {
         param($name)
         if (-not $name) {
             return @{ Success = $false; Output = "Error: process name or ID required"; Error = $true }
@@ -1452,18 +1621,20 @@ $global:IntentAliases = @{
             if ($name -match '^\d+$') {
                 Stop-Process -Id ([int]$name) -Force -ErrorAction Stop
                 @{ Success = $true; Output = "Killed process ID: $name" }
-            } else {
+            }
+            else {
                 $procs = Get-Process -Name $name -ErrorAction Stop
                 $procs | Stop-Process -Force
                 @{ Success = $true; Output = "Killed $($procs.Count) process(es): $name" }
             }
-        } catch {
+        }
+        catch {
             @{ Success = $false; Output = "Failed to kill process: $($_.Exception.Message)"; Error = $true }
         }
     }
     
     # ===== File System Operations =====
-    "create_folder" = {
+    "create_folder"          = {
         param($path)
         if (-not $path) {
             return @{ Success = $false; Output = "Error: path parameter required"; Error = $true }
@@ -1492,7 +1663,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "rename_file" = {
+    "rename_file"            = {
         param($path, $newname)
         if (-not $path) {
             return @{ Success = $false; Output = "Error: path parameter required"; Error = $true }
@@ -1526,7 +1697,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "move_file" = {
+    "move_file"              = {
         param($source, $destination)
         if (-not $source) {
             return @{ Success = $false; Output = "Error: source parameter required"; Error = $true }
@@ -1559,7 +1730,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "copy_file" = {
+    "copy_file"              = {
         param($source, $destination)
         if (-not $source) {
             return @{ Success = $false; Output = "Error: source parameter required"; Error = $true }
@@ -1592,7 +1763,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "delete_file" = {
+    "delete_file"            = {
         param($path)
         if (-not $path) {
             return @{ Success = $false; Output = "Error: path parameter required"; Error = $true }
@@ -1626,7 +1797,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "list_files" = {
+    "list_files"             = {
         param($path)
         if (-not $path) { $path = Get-Location }
         
@@ -1643,9 +1814,9 @@ $global:IntentAliases = @{
             }
             
             @{ 
-                Success = $true
-                Output = "Listed $($items.Count) items in $($validation.Path)"
-                Items = $items | Select-Object Name, Length, LastWriteTime, PSIsContainer
+                Success       = $true
+                Output        = "Listed $($items.Count) items in $($validation.Path)"
+                Items         = $items | Select-Object Name, Length, LastWriteTime, PSIsContainer
                 FormattedList = $output -join "`n"
             }
         }
@@ -1654,7 +1825,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "append_to_file" = {
+    "append_to_file"         = {
         param($path, $content)
         if (-not $path) {
             return @{ Success = $false; Output = "Error: path parameter required"; Error = $true }
@@ -1681,7 +1852,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "write_to_file" = {
+    "write_to_file"          = {
         param($path, $content)
         if (-not $path) {
             return @{ Success = $false; Output = "Error: path parameter required"; Error = $true }
@@ -1712,7 +1883,7 @@ $global:IntentAliases = @{
         }
     }
     
-    "read_file_content" = {
+    "read_file_content"      = {
         param($path, $lines)
         if (-not $path) {
             return @{ Success = $false; Output = "Error: path parameter required"; Error = $true }
@@ -1733,10 +1904,10 @@ $global:IntentAliases = @{
             $totalLines = (Get-Content -Path $validation.Path).Count
             
             @{ 
-                Success = $true
-                Output = "Read $([Math]::Min($maxLines, $totalLines)) of $totalLines lines from $($validation.Path)"
-                Content = $content
-                Path = $validation.Path
+                Success    = $true
+                Output     = "Read $([Math]::Min($maxLines, $totalLines)) of $totalLines lines from $($validation.Path)"
+                Content    = $content
+                Path       = $validation.Path
                 LinesShown = [Math]::Min($maxLines, $totalLines)
                 TotalLines = $totalLines
             }
@@ -1769,11 +1940,11 @@ function Invoke-IntentAction {
         if (-not $global:IntentAliases.ContainsKey($Intent)) {
             Write-Host "[Intent-$intentId] REJECTED: Intent '$Intent' not found" -ForegroundColor Red
             return @{
-                Success = $false
-                Output = "Intent '$Intent' not found. Available: $($global:IntentAliases.Keys -join ', ')"
-                Error = $true
+                Success  = $false
+                Output   = "Intent '$Intent' not found. Available: $($global:IntentAliases.Keys -join ', ')"
+                Error    = $true
                 IntentId = $intentId
-                Reason = "IntentNotFound"
+                Reason   = "IntentNotFound"
             }
         }
         
@@ -1831,11 +2002,11 @@ function Invoke-IntentAction {
             if ($unknownParams.Count -gt 0) {
                 Write-Host "[Intent-$intentId] REJECTED: Unknown parameters: $($unknownParams -join ', ')" -ForegroundColor Red
                 return @{
-                    Success = $false
-                    Output = "Unknown parameters for '$Intent': $($unknownParams -join ', '). Allowed: $($definedParamNames -join ', ')"
-                    Error = $true
+                    Success  = $false
+                    Output   = "Unknown parameters for '$Intent': $($unknownParams -join ', '). Allowed: $($definedParamNames -join ', ')"
+                    Error    = $true
                     IntentId = $intentId
-                    Reason = "UnknownParameters"
+                    Reason   = "UnknownParameters"
                 }
             }
             
@@ -1854,11 +2025,11 @@ function Invoke-IntentAction {
             if ($missingParams.Count -gt 0) {
                 Write-Host "[Intent-$intentId] REJECTED: Missing required parameters: $($missingParams -join ', ')" -ForegroundColor Red
                 return @{
-                    Success = $false
-                    Output = "Missing required parameters for '$Intent': $($missingParams -join ', ')"
-                    Error = $true
+                    Success  = $false
+                    Output   = "Missing required parameters for '$Intent': $($missingParams -join ', ')"
+                    Error    = $true
                     IntentId = $intentId
-                    Reason = "MissingParameters"
+                    Reason   = "MissingParameters"
                 }
             }
         }
@@ -1868,12 +2039,12 @@ function Invoke-IntentAction {
             if ($AutoConfirm -and -not $Force) {
                 Write-Host "[Intent-$intentId] BLOCKED: '$Intent' requires confirmation (Safety: RequiresConfirmation)" -ForegroundColor Red
                 return @{
-                    Success = $false
-                    Output = "Intent '$Intent' requires explicit confirmation. Use -Force to override."
-                    Error = $true
+                    Success  = $false
+                    Output   = "Intent '$Intent' requires explicit confirmation. Use -Force to override."
+                    Error    = $true
                     IntentId = $intentId
-                    Reason = "SafetyBlock"
-                    Safety = 'RequiresConfirmation'
+                    Reason   = "SafetyBlock"
+                    Safety   = 'RequiresConfirmation'
                 }
             }
             if (-not $Force) {
@@ -1882,7 +2053,7 @@ function Invoke-IntentAction {
         }
         
         # ===== Show confirmation prompt =====
-        if (-not $AutoConfirm) {
+        if (-not $AutoConfirm -and -not $Force) {
             Write-Host "`nIntent Action: $Intent" -ForegroundColor Yellow
             foreach ($key in $providedParams.Keys) {
                 Write-Host "  $key : $($providedParams[$key])" -ForegroundColor Gray
@@ -1892,11 +2063,11 @@ function Invoke-IntentAction {
             if ($response -notin @('y', 'yes', 'Y', 'YES')) {
                 Write-Host "[Intent-$intentId] Cancelled by user" -ForegroundColor Yellow
                 return @{
-                    Success = $false
-                    Output = "Cancelled by user"
-                    Error = $false
+                    Success  = $false
+                    Output   = "Cancelled by user"
+                    Error    = $false
                     IntentId = $intentId
-                    Reason = "UserCancelled"
+                    Reason   = "UserCancelled"
                 }
             }
         }
@@ -2015,12 +2186,13 @@ function Test-Intent {
     .PARAMETER JsonPayload
     JSON payload like {"intent":"open_file","param":"C:\path\file.txt"}
     #>
-    param([Parameter(Mandatory=$true)][string]$JsonPayload)
+    param([Parameter(Mandatory = $true)][string]$JsonPayload)
     
     try {
         $payload = $JsonPayload | ConvertFrom-Json
         Invoke-IntentAction -Intent $payload.intent -Param $payload.param -Param2 $payload.param2 -AutoConfirm
-    } catch {
+    }
+    catch {
         Write-Host "Invalid JSON payload: $_" -ForegroundColor Red
     }
 }
@@ -2033,14 +2205,15 @@ function Get-IntentDescription {
     .PARAMETER Name
     Intent name to describe
     #>
-    param([Parameter(Mandatory=$true)][string]$Name)
+    param([Parameter(Mandatory = $true)][string]$Name)
     
     if ($global:IntentAliases.ContainsKey($Name)) {
         Write-Host "`nIntent: $Name" -ForegroundColor Cyan
         Write-Host "Status: Available" -ForegroundColor Green
         Write-Host "Type: Script Block" -ForegroundColor Gray
         Write-Host ""
-    } else {
+    }
+    else {
         Write-Host "Intent '$Name' not found" -ForegroundColor Red
         Write-Host "Available intents: $($global:IntentAliases.Keys -join ', ')" -ForegroundColor Yellow
     }
@@ -2062,12 +2235,14 @@ function Show-IntentHelp {
     $categoriesToShow = if ($Category) {
         if ($global:IntentCategories.ContainsKey($Category)) {
             @{ $Category = $global:IntentCategories[$Category] }
-        } else {
+        }
+        else {
             Write-Host "Unknown category: $Category" -ForegroundColor Red
             Write-Host "Available categories: $($global:IntentCategories.Keys -join ', ')" -ForegroundColor Yellow
             return
         }
-    } else {
+    }
+    else {
         $global:IntentCategories
     }
     
@@ -2089,7 +2264,8 @@ function Show-IntentHelp {
                 $intentDisplay = "  $intentName$paramStr"
                 Write-Host $intentDisplay.PadRight(35) -NoNewline -ForegroundColor White
                 Write-Host "- $($meta.Description)" -ForegroundColor Gray
-            } elseif ($global:IntentAliases.ContainsKey($intentName)) {
+            }
+            elseif ($global:IntentAliases.ContainsKey($intentName)) {
                 Write-Host "  $intentName" -ForegroundColor White
             }
         }
@@ -2113,7 +2289,7 @@ function Get-IntentInfo {
     .SYNOPSIS
     Get detailed information about a specific intent including parameters
     #>
-    param([Parameter(Mandatory=$true)][string]$Name)
+    param([Parameter(Mandatory = $true)][string]$Name)
     
     if (-not $global:IntentAliases.ContainsKey($Name)) {
         Write-Host "Intent '$Name' not found" -ForegroundColor Red
@@ -2135,7 +2311,8 @@ function Get-IntentInfo {
                 Write-Host "  $($param.Name) $reqStr" -ForegroundColor Green
                 Write-Host "    $($param.Description)" -ForegroundColor Gray
             }
-        } else {
+        }
+        else {
             Write-Host "`nParameters: None" -ForegroundColor Gray
         }
         
@@ -2144,7 +2321,8 @@ function Get-IntentInfo {
             Write-Host "`nType: Composite/Workflow Intent" -ForegroundColor Magenta
             Write-Host "  This intent chains multiple actions together." -ForegroundColor Gray
         }
-    } else {
+    }
+    else {
         Write-Host "Status: Available (no metadata)" -ForegroundColor Yellow
     }
     
@@ -2152,7 +2330,8 @@ function Get-IntentInfo {
     if ($global:IntentMetadata.ContainsKey($Name) -and $global:IntentMetadata[$Name].Parameters.Count -gt 0) {
         $exampleParams = $global:IntentMetadata[$Name].Parameters | ForEach-Object { "`"$($_.Name)`":`"example`"" }
         Write-Host "  {`"intent`":`"$Name`",$($exampleParams -join ',')}" -ForegroundColor Gray
-    } else {
+    }
+    else {
         Write-Host "  {`"intent`":`"$Name`"}" -ForegroundColor Gray
     }
     
@@ -2167,27 +2346,34 @@ Set-Alias -Name intent-help -Value Show-IntentHelp -Force
 # Yes, I wrote this at 3am. No, I don't remember why it works.
 $global:Workflows = @{
     "research_and_document" = @{
-        Name = "Research and Document"
+        Name        = "Research and Document"
         Description = "Research a topic, create a document with findings"
-        Steps = @(
+        Steps       = @(
             @{ Intent = "web_search"; ParamMap = @{ query = "topic" } }
             @{ Intent = "create_docx"; ParamMap = @{ name = "topic" }; Transform = { param($topic) "$topic - Research Notes" } }
         )
     }
-    "daily_standup" = @{
-        Name = "Daily Standup"
+    "daily_standup"         = @{
+        Name        = "Daily Standup"
         Description = "Show calendar and git status for standup"
-        Steps = @(
+        Steps       = @(
             @{ Intent = "calendar_today" }
             @{ Intent = "git_status" }
         )
     }
-    "project_setup" = @{
-        Name = "Project Setup"
+    "project_setup"         = @{
+        Name        = "Project Setup"
         Description = "Create folder, initialize git, open in editor"
-        Steps = @(
+        Steps       = @(
             @{ Intent = "create_folder"; ParamMap = @{ path = "project" } }
             @{ Intent = "git_init"; ParamMap = @{ path = "project" } }
+        )
+    }
+    "debug_logger"          = @{
+        Name        = "Debug Logger"
+        Description = "Log timestamp and git status for debugging"
+        Steps       = @(
+            @{ Intent = "git_status" }
         )
     }
 }
@@ -2203,7 +2389,7 @@ function Invoke-Workflow {
     Invoke-Workflow -Name "research_and_document" -Params @{ topic = "PowerShell MCP" }
     #>
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Name,
         [hashtable]$Params = @{}
     )
@@ -2248,7 +2434,8 @@ function Invoke-Workflow {
             
             if ($result.Success) {
                 Write-Host "  [OK] $($result.Output)" -ForegroundColor Green
-            } else {
+            }
+            else {
                 Write-Host "  [FAIL] $($result.Output)" -ForegroundColor Red
             }
             $results += $result
