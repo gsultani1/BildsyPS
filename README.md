@@ -2,24 +2,27 @@
 
 > Your terminal, orchestrated. Shelix is an AI shell environment that understands your context — your files, your git state, your running processes — and acts on your behalf. Chat with Claude, GPT, or local LLMs. Execute commands, manage files, search the web, run autonomous agents, and connect to MCP servers. All from PowerShell, all local-first, nothing phoning home.
 
-![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue)
-![Version](https://img.shields.io/badge/Version-1.2.0-blue)
+![PowerShell](https://img.shields.io/badge/PowerShell-7.0%2B-blue)
+![Version](https://img.shields.io/badge/Version-1.3.0-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![AI](https://img.shields.io/badge/AI-Claude%20%7C%20GPT%20%7C%20Ollama-purple)
 
-**Topics:** `shelix` `ai-assistant` `claude` `chatgpt` `ollama` `llm` `terminal` `mcp` `agent` `automation` `cli`
+**Topics:** `shelix` `ai-assistant` `claude` `chatgpt` `ollama` `llm` `terminal` `mcp` `agent` `automation` `cli` `app-builder` `exe`
 
 ## Features
 
 ### 🤖 AI Chat Assistant
 - **Multi-provider support**: Ollama, Anthropic Claude, OpenAI, LM Studio, + **llm CLI** (100+ plugins)
 - **Command execution**: AI can run safe PowerShell commands on your behalf
-- **Intent system**: 77+ natural language actions like "create a doc called Report"
+- **Intent system**: 80+ natural language actions like "create a doc called Report"
 - **Streaming responses**: Real-time output from AI providers
 - **MCP Client**: Connect to external MCP servers for extended capabilities
-- **Conversation persistence**: Sessions auto-save and resume across restarts
+- **Conversation persistence**: SQLite database with FTS5 full-text search across all sessions
 - **Folder awareness**: AI sees your current directory, git status, and file structure
 - **Token budget management**: Intelligently trims context to fit model limits, summarizes evicted messages
+- **Secret scanner**: Detects exposed API keys, tokens, and credentials in files and staged git commits
+- **Vision support**: Send screenshots and images to Claude/GPT-4o for analysis
+- **OCR integration**: Tesseract OCR for images, pdftotext for PDFs, with vision API fallback
 
 ### 🧠 Autonomous Agent
 
@@ -51,8 +54,47 @@ agent -Memory @{ budget = "5000" } "calculate 8% tax on the budget"
 | `read_file` | Read local text files |
 | `shell` | Execute PowerShell (safety-gated) |
 | `store` / `recall` | Working memory — save values between steps |
+| `screenshot` | Capture and analyze the screen via vision model |
+| `ocr` | Extract text from images and PDFs via Tesseract |
+| `build_app` | Build a standalone .exe from a natural language prompt |
+| `search_history` | Full-text search across past conversations |
 
 Plugins can register additional tools via `Register-AgentTool`.
+
+### 🏗️ App Builder — Prompt to .exe
+
+Describe an app in plain English and get a compiled Windows executable.
+
+```powershell
+# Build a standalone .exe (defaults to PowerShell/WinForms lane)
+build "a todo list app with categories and due dates"
+
+# Force a specific framework
+build python-tk "a calculator with scientific functions"
+build python-web "a markdown editor with live preview"
+
+# Override token budget for complex apps
+build -tokens 32000 "a project management dashboard"
+
+# Skip branding (future paid tier)
+build -nobranding "a simple timer"
+
+# List all builds
+builds
+
+# Modify an existing build with diff-based edits
+rebuild my-todo-app "add a dark mode toggle"
+```
+
+**Three build lanes:**
+
+| Lane | UI Framework | Compiler | Dependencies |
+|------|-------------|----------|--------------|
+| **powershell** (default) | WinForms / WPF | ps2exe | ps2exe from PSGallery only |
+| **python-tk** | Tkinter | PyInstaller | Python 3.8+ |
+| **python-web** | PyWebView + HTML/CSS/JS | PyInstaller | Python 3.8+ + pywebview |
+
+PowerShell is the default lane — no venv, no pip, no PyInstaller. Just a direct `.ps1` → `.exe` compilation. Token budget auto-detects from your model's context window with per-lane caps and floors. Every generated app includes "Built with Shelix" branding.
 
 ### 🔧 Available Intents
 
@@ -68,6 +110,8 @@ Plugins can register additional tools via `Register-AgentTool`.
 | **MCP** | `mcp_servers`, `mcp_connect`, `mcp_tools`, `mcp_call` |
 | **Workflows** | `run_workflow`, `list_workflows`, `schedule_workflow`, `list_scheduled_workflows`, `remove_scheduled_workflow` |
 | **System** | `service_restart`, `system_info`, `network_status`, `process_list`, `process_kill`, `run_code` |
+| **Vision** | `analyze_image`, `screenshot`, `ocr_file` — Image analysis, screen capture, OCR |
+| **Productivity** | `build_app` — Build a standalone .exe from a natural language prompt |
 | **Agent** | `agent_task` — Delegate a multi-step task to the autonomous agent |
 
 ### 🧩 Plugin Architecture
@@ -212,10 +256,13 @@ Shelix/
 ├── UserSkills.json                   # Custom user-defined intents (your file)
 ├── UserSkills.example.json           # Template for user skills
 ├── UserAliases.ps1                   # Your custom persistent aliases
+├── Shelix.psm1                       # Module loader
+├── Shelix.psd1                       # Module manifest (186 functions, 73 aliases)
 ├── Modules/
 │   ├── ConfigLoader.ps1              # .env and config loading
 │   ├── PlatformUtils.ps1             # Cross-platform helpers
 │   ├── SecurityUtils.ps1             # Path/URL security
+│   ├── SecretScanner.ps1             # API key / credential leak detection
 │   ├── CommandValidation.ps1         # Command whitelist & safety
 │   ├── SystemUtilities.ps1           # uptime, hwinfo, ports, sudo, PATH
 │   ├── ArchiveUtils.ps1              # zip, unzip
@@ -225,32 +272,37 @@ Shelix/
 │   ├── AIExecution.ps1               # AI command gateway, rate limiting
 │   ├── ResponseParser.ps1            # Parse AI responses, format markdown
 │   ├── DocumentTools.ps1             # OpenXML document creation
-│   ├── SafetySystem.ps1              # AI execution safety
+│   ├── SafetySystem.ps1              # AI execution safety + secret scanning
 │   ├── TerminalTools.ps1             # bat, glow, broot, fzf integration
 │   ├── NavigationUtils.ps1           # Navigation & git shortcuts
 │   ├── PackageManager.ps1            # Tool installation
 │   ├── WebTools.ps1                  # Web search APIs
 │   ├── ProductivityTools.ps1         # Clipboard, Git, Calendar
 │   ├── MCPClient.ps1                 # MCP protocol client
+│   ├── BrowserAwareness.ps1          # Browser tab URL + content reading
+│   ├── VisionTools.ps1               # Screenshot capture + vision model analysis
+│   ├── OCRTools.ps1                  # Tesseract OCR + pdftotext integration
+│   ├── CodeArtifacts.ps1             # AI code save + execute + tracking
+│   ├── AppBuilder.ps1                # Prompt-to-executable pipeline (ps2exe, PyInstaller)
 │   ├── FzfIntegration.ps1            # Fuzzy finder integration
 │   ├── PersistentAliases.ps1         # User-defined aliases
 │   ├── ProfileHelp.ps1               # Help, tips, system prompt
 │   ├── FolderContext.ps1             # Folder awareness for AI context
 │   ├── ToastNotifications.ps1        # BurntToast/.NET notifications
-│   ├── BrowserAwareness.ps1          # Browser tab URL + content reading
-│   ├── CodeArtifacts.ps1             # AI code save + execute + tracking
+│   ├── ChatStorage.ps1               # SQLite persistence + FTS5 full-text search
+│   ├── ChatSession.ps1               # LLM chat loop + session management
+│   ├── ChatProviders.ps1             # AI provider implementations
+│   ├── AgentHeartbeat.ps1            # Cron-triggered background agent tasks
 │   ├── UserSkills.ps1                # JSON user-defined intent loader
 │   ├── PluginLoader.ps1              # Plugin system (deps, config, hooks, tests)
-│   ├── ChatSession.ps1               # LLM chat loop + session persistence
-│   ├── ChatProviders.ps1             # AI provider implementations
 │   ├── IntentAliasSystem.ps1         # Intent system orchestrator (loads below)
-│   ├── IntentRegistry.ps1           # Intent metadata + category definitions
-│   ├── IntentActions.ps1            # Core intent scriptblocks (docs, web, git, etc.)
-│   ├── IntentActionsSystem.ps1      # System/filesystem/workflow scriptblocks
-│   ├── WorkflowEngine.ps1           # Multi-step workflow engine
-│   ├── IntentRouter.ps1             # Intent router, help, tab completion
-│   ├── AgentTools.ps1              # Agent tool registry (calculator, stock, web, etc.)
-│   └── AgentLoop.ps1               # Autonomous agent engine (ReAct + tools + memory)
+│   ├── IntentRegistry.ps1            # Intent metadata + category definitions
+│   ├── IntentActions.ps1             # Core intent scriptblocks (docs, web, git, etc.)
+│   ├── IntentActionsSystem.ps1       # System/filesystem/workflow/vision/build scriptblocks
+│   ├── WorkflowEngine.ps1            # Multi-step workflow engine
+│   ├── IntentRouter.ps1              # Intent router, help, tab completion
+│   ├── AgentTools.ps1                # Agent tool registry (17 built-in tools)
+│   └── AgentLoop.ps1                 # Autonomous agent engine (ReAct + tools + memory)
 ├── Plugins/
 │   ├── _Example.ps1                  # Reference plugin template
 │   ├── _Pomodoro.ps1                 # Pomodoro timer plugin
@@ -280,6 +332,10 @@ While in chat mode:
 - `/steps` - Show steps from last agent run
 - `/memory` - Show agent working memory
 - `/plan` - Show agent's last announced plan
+- `vision` / `vision <path>` - Analyze an image or screenshot with vision AI
+- `build "prompt"` - Build a standalone .exe from a description
+- `builds` - List all previous builds
+- `rebuild <name> "changes"` - Modify and rebuild an existing app
 - `switch` - Change AI provider
 - `model <name>` - Change model
 
@@ -299,23 +355,23 @@ chat -AutoTrim      # automatically trim context when approaching model limits
 - **Execution logging**: All AI commands are logged
 - **Path security**: File read/write operations validated against allowed roots
 - **Calculator sandboxing**: Only `[math]::` .NET calls permitted; arbitrary type access blocked
+- **Secret scanning**: Detects API keys, tokens, and credentials in files and staged git commits at startup
+- **Code validation**: App Builder validates generated code for syntax errors, dangerous patterns, and secret leaks before compilation
 
 ## Requirements
 
-- PowerShell 5.1+ (Windows) or PowerShell 7+ (Windows/Mac/Linux)
-- Windows 10/11, macOS, or Linux (PS 7)
+- **PowerShell 7.0+** (Windows/Mac/Linux)
+- Windows 10/11, macOS, or Linux
 - Optional: Ollama for local AI
 - Optional: Anthropic/OpenAI API keys for cloud AI
 - Optional: Node.js for MCP servers
+- Optional: Tesseract OCR for image text extraction
+- Optional: Python 3.8+ for python-tk / python-web build lanes
+- Optional: ps2exe (`Install-Module ps2exe`) for PowerShell build lane
 
 ## Installation
 
-### PowerShell 5.1 (Windows Default)
-```powershell
-git clone https://github.com/gsultani1/Shelix.git "$HOME\Documents\WindowsPowerShell"
-```
-
-### PowerShell 7 (Cross-Platform)
+### PowerShell 7 (Recommended)
 ```powershell
 # Windows
 git clone https://github.com/gsultani1/Shelix.git "$HOME\Documents\PowerShell"
@@ -328,6 +384,8 @@ git clone https://github.com/gsultani1/Shelix.git ~/.config/powershell
 1. Copy `ChatConfig.example.json` to `ChatConfig.json`
 2. Add your API keys to `ChatConfig.json`
 3. Restart PowerShell or run `. $PROFILE`
+
+See [SETUP.md](SETUP.md) for detailed setup instructions including optional dependencies.
 
 ## MCP (Model Context Protocol) Support
 
@@ -374,23 +432,26 @@ See [VISION.md](VISION.md) for the full product direction.
 | Status | Feature |
 |--------|---------|
 | ✅ | Multi-provider AI chat (Claude, GPT, Ollama, LM Studio, llm CLI) |
-| ✅ | Intent system — 77+ natural language actions |
+| ✅ | Intent system — 80+ natural language actions |
 | ✅ | Multi-step workflows + Windows Task Scheduler integration |
-| ✅ | Conversation persistence — sessions survive restarts |
+| ✅ | Conversation persistence — SQLite with FTS5 full-text search |
 | ✅ | Token budget management — model-aware context trimming |
 | ✅ | Folder awareness — AI sees your directory, git state, file structure |
 | ✅ | MCP client — connect to any MCP server |
 | ✅ | Safety system — command whitelist, confirmation prompts, rate limiting |
+| ✅ | Secret scanner — detect exposed API keys in files and staged git commits |
 | ✅ | Toast notifications — BurntToast/.NET alerts on task completions |
 | ✅ | Plugin architecture — drop `.ps1` files with deps, config, hooks, tests, hot-reload |
 | ✅ | Custom user skills — define intents via JSON config, no PowerShell required |
 | ✅ | Browser awareness — read active tab URL, fetch page content via UI Automation |
 | ✅ | Code artifacts — save, execute, and track AI-generated code blocks |
-| ✅ | **Autonomous agent** — ReAct loop, 12 built-in tools, working memory, interactive mode |
+| ✅ | **Autonomous agent** — ReAct loop, 17 built-in tools, working memory, interactive mode |
 | ✅ | **Codebase audit** — security hardening, parse fixes, duplicate removal, deterministic ordering |
-| 🔜 | Vision model support — send screenshots/images directly to Claude/GPT-4o |
-| 🔜 | OCR integration — Tesseract for scanned docs, pdftotext for text PDFs |
-| 🔜 | RAG + SQLite — full-text search over conversation history, embedding-ready |
+| ✅ | **Vision model support** — send screenshots/images to Claude/GPT-4o, auto-resize, clipboard capture |
+| ✅ | **OCR integration** — Tesseract for scanned docs, pdftotext for PDFs, vision API fallback |
+| ✅ | **SQLite + FTS5** — full-text search over all conversation history, session persistence |
+| ✅ | **Agent heartbeat** — cron-triggered background tasks via Windows Task Scheduler |
+| ✅ | **App Builder** — describe an app in English → get a compiled .exe (PowerShell, Python-TK, Python-Web) |
 | 🔜 | Browser automation — Selenium WebDriver integration |
 | 🔜 | Remote listener + webhooks — receive commands via Twilio/HTTP |
 | 🔜 | GUI layer — mission control dashboard for your entire computer |

@@ -92,6 +92,45 @@ tools
 
 ---
 
+### 5. App Builder Dependencies (Optional)
+
+The App Builder compiles standalone `.exe` files from natural language prompts. Dependencies vary by build lane:
+
+**PowerShell lane (default — recommended):**
+```powershell
+# Only dependency — compiles .ps1 to .exe
+Install-Module ps2exe -Scope CurrentUser
+```
+
+**Python lanes (python-tk, python-web):**
+```powershell
+# Python 3.8+ required
+python --version
+
+# PyInstaller is installed automatically in a per-build venv
+# For python-web lane, pywebview is also installed automatically
+```
+
+---
+
+### 6. Vision & OCR Dependencies (Optional)
+
+```powershell
+# Tesseract OCR — for image text extraction
+winget install UB-Mannheim.TesseractOCR
+
+# pdftotext — for PDF text extraction (part of Xpdf tools)
+# Download from: https://www.xpdfreader.com/download.html
+# Add to PATH after install
+
+# Vision models work out of the box with Claude/GPT-4o (cloud)
+# For local vision, pull a multimodal model:
+ollama pull llava
+ollama pull llama3.2-vision
+```
+
+---
+
 ## Usage
 
 ### Start a Chat Session
@@ -133,6 +172,13 @@ chat -Provider ollama -Model llama3.2 -Stream
 | `/steps` | Show steps from last agent run |
 | `/memory` | Show agent working memory |
 | `/plan` | Show agent's last plan |
+| `vision` / `vision <path>` | Analyze image or screenshot with vision AI |
+| `vision --full` | Send at full resolution (skip auto-resize) |
+| `build "prompt"` | Build a standalone .exe from a description |
+| `builds` | List all previous builds |
+| `rebuild <name> "changes"` | Modify and rebuild an existing app |
+| `heartbeat start` | Start agent heartbeat (cron-triggered tasks) |
+| `heartbeat stop` | Stop agent heartbeat |
 
 ### AI Can Execute Commands
 
@@ -172,18 +218,23 @@ agent-tools    # List all available tools
 Shelix/
 ├── Microsoft.PowerShell_profile.ps1  # Main profile (loads modules)
 ├── ChatConfig.json                    # API keys & settings
+├── Shelix.psm1 / Shelix.psd1         # Module loader + manifest
 ├── NaturalLanguageMappings.json       # Command translations
 ├── UserSkills.json                    # Your custom intents (JSON)
 ├── UserAliases.ps1                    # Your custom aliases
-├── Modules/                           # 25+ focused modules
-│   ├── IntentAliasSystem.ps1          # Intent routing (30+ intents)
-│   ├── UserSkills.ps1                 # JSON user skill loader
-│   ├── PluginLoader.ps1              # Plugin system (deps, config, hooks, tests)
-│   ├── ChatSession.ps1                # Chat loop + session persistence
-│   ├── ChatProviders.ps1              # LLM backends
-│   ├── FolderContext.ps1              # Folder awareness for AI
-│   ├── ToastNotifications.ps1         # BurntToast/.NET alerts
-│   └── ...                            # See README for full list
+├── Modules/                           # 30+ focused modules
+│   ├── ChatProviders.ps1              # LLM backends (Ollama, Anthropic, OpenAI, LM Studio, llm CLI)
+│   ├── ChatSession.ps1                # Chat loop + session management
+│   ├── ChatStorage.ps1                # SQLite persistence + FTS5 full-text search
+│   ├── AppBuilder.ps1                 # Prompt-to-executable pipeline (ps2exe, PyInstaller)
+│   ├── VisionTools.ps1                # Screenshot capture + vision model analysis
+│   ├── OCRTools.ps1                   # Tesseract OCR + pdftotext integration
+│   ├── SecretScanner.ps1              # API key / credential leak detection
+│   ├── AgentLoop.ps1                  # Autonomous agent (ReAct + 17 tools + memory)
+│   ├── AgentHeartbeat.ps1             # Cron-triggered background tasks
+│   ├── PluginLoader.ps1               # Plugin system (deps, config, hooks, tests)
+│   ├── IntentAliasSystem.ps1          # Intent routing (80+ intents)
+│   └── ...                            # See README for full module list
 └── Plugins/                           # Drop-in plugin directory
     ├── _Example.ps1                   # Reference template
     ├── _Pomodoro.ps1                  # Timer plugin
@@ -296,6 +347,23 @@ Invoke-Workflow -Name daily_standup -StopOnError # Halt on first failure
 workflows         # List available workflows
 session-info      # Show current session
 sessions          # Browse saved sessions
+
+# Vision & OCR
+vision            # Capture screenshot and analyze
+vision image.png  # Analyze a specific image
+vision --full     # Send at full resolution
+ocr image.png     # Extract text via Tesseract
+
+# App Builder
+build "a todo list app"              # Build .exe from prompt
+build python-tk "a calculator"       # Force Python-TK lane
+build -tokens 32000 "complex app"    # Override token budget
+builds                               # List all builds
+rebuild my-app "add dark mode"       # Modify existing build
+
+# Heartbeat
+heartbeat start   # Start cron-triggered agent tasks
+heartbeat stop    # Stop heartbeat
 ```
 
 ---

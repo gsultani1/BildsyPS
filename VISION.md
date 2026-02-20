@@ -20,10 +20,14 @@ Today it does things like:
 - **`agent "check AAPL and MSFT and calculate the difference"`** → the agent searches stock prices, runs the math, and reports back — no orchestration from you
 - **`agent -Interactive "research async patterns"`** → multi-turn agent session with shared working memory across follow-up tasks
 - **`Invoke-Workflow -Name daily_standup -StopOnError`** → halt a workflow on first failure rather than running all steps regardless
+- **`vision screenshot`** → captures your screen and sends it to a vision-capable model for analysis
+- **`build "a todo list app with categories"`** → generates code, validates it, compiles a standalone .exe, and tracks the build in SQLite
+- **`rebuild my-app "add dark mode"`** → applies diff-based edits to an existing build and recompiles
+- **`search meeting notes`** → FTS5 full-text search across all saved conversation sessions
 
 All of it runs locally. Nothing phones home. The AI can only run commands you've explicitly whitelisted.
 
-As of v1.2.0, the codebase has been fully audited: security hardened, parse errors eliminated, duplicate code removed, and intent ordering made deterministic. The foundation is clean.
+As of v1.3.0, the codebase has been fully audited: security hardened, parse errors eliminated, duplicate code removed, and intent ordering made deterministic. The foundation is clean.
 
 ---
 
@@ -36,21 +40,24 @@ The long-term vision is **mission control for your entire computer** — an AI l
 ### The layers, in order:
 
 **1. Shell orchestrator** *(✅ complete)*
-The AI understands your terminal context — current directory, git state, running processes, file structure — and can execute actions through a safety-gated intent system with 77+ built-in intents. Security hardened: calculator sandboxed to `[math]::` only, file reads validated against allowed roots, `RequiresConfirmation` intents always prompt even in agent mode.
+The AI understands your terminal context — current directory, git state, running processes, file structure — and can execute actions through a safety-gated intent system with 80+ built-in intents. Security hardened: calculator sandboxed to `[math]::` only, file reads validated against allowed roots, `RequiresConfirmation` intents always prompt even in agent mode. Secret scanner detects leaked API keys in files and staged git commits.
 
 **2. Extensibility layer** *(✅ complete)*
 Drop-in plugin architecture with dependency resolution, per-plugin configuration, lifecycle hooks, self-tests, and hot-reload. User-defined skills via JSON config for non-programmers. Community contributions without merge conflicts.
 
 **3. Context engine** *(✅ complete)*
-Persistent memory across sessions. The AI recalls what you worked on yesterday, what files you've touched, what decisions you made. Conversation history stored locally, searchable. Token budget management with intelligent context trimming.
+Persistent memory across sessions via SQLite with FTS5 full-text search. The AI recalls what you worked on yesterday, what files you've touched, what decisions you made. Conversation history stored locally, searchable across all sessions. Token budget management with intelligent context trimming and eviction summarization.
 
-**4. Computer awareness** *(next)*
-Vision model support for screenshots and images. Browser tab awareness. OCR for documents and scanned PDFs. The AI sees what you see.
+**4. Computer awareness** *(✅ complete)*
+Vision model support for screenshots and images — send to Claude, GPT-4o, or local multimodal models. Browser tab awareness via UI Automation. Tesseract OCR for scanned documents and images, pdftotext for text PDFs, with vision API fallback. The AI sees what you see.
 
 **5. Agent architecture** *(✅ complete)*
-Dynamic multi-step task planning via the ReAct (Reason + Act) loop. The agent has 12 built-in tools (calculator, web search, stock quotes, Wikipedia, datetime, JSON parsing, regex, file reading, shell execution, working memory), unified tool+intent dispatch, an ASK protocol for mid-task user input, PLAN display, and interactive multi-turn sessions with shared memory.
+Dynamic multi-step task planning via the ReAct (Reason + Act) loop. The agent has 17 built-in tools (calculator, web search, stock quotes, Wikipedia, datetime, JSON parsing, regex, file reading, shell execution, working memory, screenshot, OCR, app building, chat history search), unified tool+intent dispatch, an ASK protocol for mid-task user input, PLAN display, and interactive multi-turn sessions with shared memory. Background agent heartbeat for cron-triggered scheduled tasks.
 
-**6. Mission control GUI** *(future)*
+**6. App Builder** *(✅ complete)*
+Prompt-to-executable pipeline. Describe an app in plain English and get a compiled Windows `.exe`. Three build lanes: PowerShell/WinForms (default — zero external deps beyond ps2exe), Python-TK (Tkinter + PyInstaller), and Python-Web (PyWebView + PyInstaller). Token budget auto-detects from model context window. Generated code is validated for syntax errors, dangerous patterns, and secret leaks before compilation. Diff-based rebuild modifies existing builds without full regeneration. Every app includes "Built with Shelix" branding. All builds tracked in SQLite.
+
+**7. Mission control GUI** *(next)*
 A dashboard layer over the shell. Not a replacement — an amplifier. The terminal stays the engine; the GUI surfaces context, history, running tasks, and agent state in a way that's faster to scan than a command line.
 
 ---
@@ -103,8 +110,9 @@ The highest-leverage contributions right now:
 - **User skills** — Add JSON-defined command sequences to `UserSkills.json`
 - **Provider integrations** — New LLM APIs, local model formats
 - **Cross-platform testing** — macOS/Linux via PowerShell 7
-- **Vision + OCR** — Multimodal model support, Tesseract integration
-- **RAG layer** — SQLite conversation storage, embedding-ready schema (stub exists in ChatSession.ps1)
+- **App Builder templates** — Pre-built app scaffolds for common use cases (dashboards, utilities, data viewers)
+- **Browser automation** — Selenium WebDriver integration for web scraping and testing
+- **GUI layer** — Mission control dashboard (WPF/Avalonia/web) surfacing context, history, and agent state
 
 ---
 
