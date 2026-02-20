@@ -491,6 +491,41 @@ Register-AgentTool -Name 'recall' `
         return @{ Success = $false; Output = "Key '$key' not found in memory. Available: $available" }
     }
 
+# --- screenshot (vision) ---
+Register-AgentTool -Name 'screenshot' `
+    -Description 'Capture a screenshot and describe what is on screen using a vision model.' `
+    -Parameters @(
+        @{ Name = 'prompt'; Required = $false; Description = 'What to look for or ask about the screen (default: describe the screen)' }
+        @{ Name = 'full'; Required = $false; Description = 'Set to "true" to send at full resolution (for dense text/spreadsheets)' }
+    ) `
+    -Execute {
+        param($p)
+        if (-not (Get-Command Capture-Screenshot -ErrorAction SilentlyContinue)) {
+            return @{ Success = $false; Output = 'VisionTools module not loaded' }
+        }
+        if (-not (Get-Command Send-ImageToAI -ErrorAction SilentlyContinue)) {
+            return @{ Success = $false; Output = 'VisionTools module not loaded' }
+        }
+
+        $prompt = if ($p['prompt']) { $p['prompt'] } else { 'Describe what you see on this screen. Note any open applications, windows, and content visible.' }
+        $fullRes = $p['full'] -eq 'true'
+
+        $capture = Capture-Screenshot -FullResolution:$fullRes
+        if (-not $capture.Success) {
+            return @{ Success = $false; Output = "Screenshot failed: $($capture.Output)" }
+        }
+
+        $result = Send-ImageToAI -ImagePath $capture.Path -Prompt $prompt -FullResolution:$fullRes
+        Remove-Item $capture.Path -Force -ErrorAction SilentlyContinue
+
+        if ($result.Success) {
+            return @{ Success = $true; Output = $result.Output }
+        }
+        else {
+            return @{ Success = $false; Output = $result.Output }
+        }
+    }
+
 # ===== Aliases =====
 Set-Alias agent-tools Get-AgentTools -Force
 

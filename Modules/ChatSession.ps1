@@ -269,6 +269,113 @@ function Start-ChatSession {
                 }
                 continue
             }
+            '^(vision|/vision)\s+--full\s+(.+)$' {
+                # vision --full <path or prompt>
+                $visionArg = $Matches[2]
+                if (Get-Command Send-ImageToAI -ErrorAction SilentlyContinue) {
+                    if (Test-Path $visionArg) {
+                        Write-Host '[Vision] Analyzing image at full resolution...' -ForegroundColor Cyan
+                        $vResult = Send-ImageToAI -ImagePath $visionArg -FullResolution -Provider $Provider -Model $Model
+                    }
+                    else {
+                        Write-Host '[Vision] Capturing screenshot at full resolution...' -ForegroundColor Cyan
+                        $cap = Capture-Screenshot -FullResolution
+                        if ($cap.Success) {
+                            $vResult = Send-ImageToAI -ImagePath $cap.Path -Prompt $visionArg -FullResolution -Provider $Provider -Model $Model
+                            Remove-Item $cap.Path -Force -ErrorAction SilentlyContinue
+                        }
+                        else {
+                            Write-Host "  $($cap.Output)" -ForegroundColor Red
+                            continue
+                        }
+                    }
+                    if ($vResult.Success) {
+                        $global:ChatSessionHistory += @{ role = 'user'; content = '[Vision: image analyzed at full resolution]' }
+                        $global:ChatSessionHistory += @{ role = 'assistant'; content = $vResult.Output }
+                        Write-Host "`nAI>" -ForegroundColor Cyan
+                        if (Get-Command Format-Markdown -ErrorAction SilentlyContinue) { Format-Markdown $vResult.Output } else { Write-Host $vResult.Output }
+                    }
+                    else { Write-Host "  $($vResult.Output)" -ForegroundColor Red }
+                }
+                else { Write-Host 'VisionTools module not loaded.' -ForegroundColor Red }
+                continue
+            }
+            '^(vision|/vision)\s+--full$' {
+                # vision --full (screenshot at full res)
+                if (Get-Command Capture-Screenshot -ErrorAction SilentlyContinue) {
+                    Write-Host '[Vision] Capturing screenshot at full resolution...' -ForegroundColor Cyan
+                    $cap = Capture-Screenshot -FullResolution
+                    if ($cap.Success) {
+                        $vResult = Send-ImageToAI -ImagePath $cap.Path -FullResolution -Provider $Provider -Model $Model
+                        Remove-Item $cap.Path -Force -ErrorAction SilentlyContinue
+                        if ($vResult.Success) {
+                            $global:ChatSessionHistory += @{ role = 'user'; content = '[Vision: screenshot analyzed at full resolution]' }
+                            $global:ChatSessionHistory += @{ role = 'assistant'; content = $vResult.Output }
+                            Write-Host "`nAI>" -ForegroundColor Cyan
+                            if (Get-Command Format-Markdown -ErrorAction SilentlyContinue) { Format-Markdown $vResult.Output } else { Write-Host $vResult.Output }
+                        }
+                        else { Write-Host "  $($vResult.Output)" -ForegroundColor Red }
+                    }
+                    else { Write-Host "  $($cap.Output)" -ForegroundColor Red }
+                }
+                else { Write-Host 'VisionTools module not loaded.' -ForegroundColor Red }
+                continue
+            }
+            '^(vision|/vision)\s+(.+)$' {
+                # vision <path> or vision <prompt>
+                $visionArg = $Matches[2]
+                if (Get-Command Send-ImageToAI -ErrorAction SilentlyContinue) {
+                    if (Test-Path $visionArg) {
+                        Write-Host "[Vision] Analyzing: $visionArg" -ForegroundColor Cyan
+                        $vResult = Send-ImageToAI -ImagePath $visionArg -Provider $Provider -Model $Model
+                    }
+                    else {
+                        # Treat as prompt for screenshot
+                        Write-Host '[Vision] Capturing screenshot...' -ForegroundColor Cyan
+                        $cap = Capture-Screenshot
+                        if ($cap.Success) {
+                            $vResult = Send-ImageToAI -ImagePath $cap.Path -Prompt $visionArg -Provider $Provider -Model $Model
+                            Remove-Item $cap.Path -Force -ErrorAction SilentlyContinue
+                        }
+                        else {
+                            Write-Host "  $($cap.Output)" -ForegroundColor Red
+                            continue
+                        }
+                    }
+                    if ($vResult.Success) {
+                        $placeholder = if (Test-Path $visionArg) { "[Vision: analyzed $visionArg]" } else { "[Vision: screenshot -- $visionArg]" }
+                        $global:ChatSessionHistory += @{ role = 'user'; content = $placeholder }
+                        $global:ChatSessionHistory += @{ role = 'assistant'; content = $vResult.Output }
+                        Write-Host "`nAI>" -ForegroundColor Cyan
+                        if (Get-Command Format-Markdown -ErrorAction SilentlyContinue) { Format-Markdown $vResult.Output } else { Write-Host $vResult.Output }
+                    }
+                    else { Write-Host "  $($vResult.Output)" -ForegroundColor Red }
+                }
+                else { Write-Host 'VisionTools module not loaded.' -ForegroundColor Red }
+                continue
+            }
+            '^(vision|/vision)$' {
+                # Plain vision -- screenshot + describe
+                if (Get-Command Capture-Screenshot -ErrorAction SilentlyContinue) {
+                    Write-Host '[Vision] Capturing screenshot...' -ForegroundColor Cyan
+                    $cap = Capture-Screenshot
+                    if ($cap.Success) {
+                        Write-Host "  Captured $($cap.Width)x$($cap.Height)" -ForegroundColor DarkGray
+                        $vResult = Send-ImageToAI -ImagePath $cap.Path -Provider $Provider -Model $Model
+                        Remove-Item $cap.Path -Force -ErrorAction SilentlyContinue
+                        if ($vResult.Success) {
+                            $global:ChatSessionHistory += @{ role = 'user'; content = '[Vision: screenshot analyzed]' }
+                            $global:ChatSessionHistory += @{ role = 'assistant'; content = $vResult.Output }
+                            Write-Host "`nAI>" -ForegroundColor Cyan
+                            if (Get-Command Format-Markdown -ErrorAction SilentlyContinue) { Format-Markdown $vResult.Output } else { Write-Host $vResult.Output }
+                        }
+                        else { Write-Host "  $($vResult.Output)" -ForegroundColor Red }
+                    }
+                    else { Write-Host "  $($cap.Output)" -ForegroundColor Red }
+                }
+                else { Write-Host 'VisionTools module not loaded.' -ForegroundColor Red }
+                continue
+            }
             '^(agent|/agent)\s+(.+)$' {
                 $agentTask = $Matches[2]
                 if (Get-Command Invoke-AgentTask -ErrorAction SilentlyContinue) {

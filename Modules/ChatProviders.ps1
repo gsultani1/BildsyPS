@@ -382,6 +382,7 @@ function Invoke-AnthropicChat {
             }
             continue
         }
+        # Pass content through as-is: string for text, array for multimodal (vision)
         $anthropicMessages += @{
             role    = $msg.role
             content = $msg.content

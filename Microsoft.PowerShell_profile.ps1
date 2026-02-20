@@ -56,6 +56,7 @@ if (Test-Path $global:ModulesPath) {
     
     # Context awareness
     . "$global:ModulesPath\BrowserAwareness.ps1"   # Browser tab awareness
+    . "$global:ModulesPath\VisionTools.ps1"        # Vision model support (screenshot, image analysis)
     . "$global:ModulesPath\CodeArtifacts.ps1"      # AI code generation artifacts
 
     # User experience

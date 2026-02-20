@@ -26,6 +26,7 @@ $global:CategoryDefinitions = @{
     'workflow'   = @{ Name = 'Workflows'; Description = 'Multi-step automated workflows' }
     'filesystem' = @{ Name = 'File System Operations'; Description = 'Create, rename, move, and manage files/folders' }
     'agent'      = @{ Name = 'Agent'; Description = 'Autonomous multi-step task execution' }
+    'vision'     = @{ Name = 'Vision'; Description = 'Image analysis and screenshot capture' }
 }
 
 # ===== Module Initialization =====
@@ -456,6 +457,23 @@ $global:IntentMetadata = @{
         Parameters  = @(
             @{ Name = 'path'; Required = $true; Description = 'Path to the file' }
             @{ Name = 'lines'; Required = $false; Description = 'Max lines to read (default 100)' }
+        )
+    }
+    'analyze_image'             = @{
+        Category    = 'vision'
+        Description = 'Analyze an image file using a vision-capable LLM'
+        Parameters  = @(
+            @{ Name = 'path'; Required = $true; Description = 'Path to image file (png, jpg, gif, webp, bmp)' }
+            @{ Name = 'prompt'; Required = $false; Description = 'What to ask about the image (default: describe it)' }
+            @{ Name = 'full'; Required = $false; Description = 'Set to true to skip resize (for dense text/spreadsheets)' }
+        )
+    }
+    'screenshot'                = @{
+        Category    = 'vision'
+        Description = 'Capture a screenshot and analyze it with a vision model'
+        Parameters  = @(
+            @{ Name = 'prompt'; Required = $false; Description = 'What to ask about the screen (default: describe it)' }
+            @{ Name = 'full'; Required = $false; Description = 'Set to true to send at full resolution' }
         )
     }
 }
