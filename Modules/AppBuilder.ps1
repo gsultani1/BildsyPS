@@ -343,16 +343,11 @@ function Invoke-CodeGeneration {
 
         # Fail early on truncated code — prevents misleading syntax errors downstream
         if ($response.StopReason -eq 'max_tokens' -or $response.StopReason -eq 'length') {
-            $logsDir = Join-Path $global:AppBuilderPath '_logs'
-            if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir -Force | Out-Null }
-            $truncLogPath = Join-Path $logsDir "truncated_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
-            $content | Set-Content -Path $truncLogPath -Encoding UTF8
-
             return @{
-                Success      = $false
-                ErrorMessage = "Code generation was truncated (hit max_tokens). The model ran out of output budget before completing the code. Raw response saved to: $truncLogPath. Consider using a model with a higher output limit or simplifying the prompt."
-                LogPath      = $truncLogPath
-                StopReason   = "max_tokens"
+                Success    = $false
+                Output     = "Code generation was truncated (hit max_tokens). The model ran out of output budget before completing the code. Raw response saved to: $logFile. Consider using a model with a higher output limit or simplifying the prompt."
+                LogPath    = $logFile
+                StopReason = "max_tokens"
             }
         }
 

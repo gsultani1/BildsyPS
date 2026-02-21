@@ -769,9 +769,10 @@ function Get-ChatModels {
         }
     }
     elseif ($Provider -eq 'anthropic') {
-        Write-Host "  claude-3-5-sonnet-20241022 (recommended)" -ForegroundColor Green
-        Write-Host "  claude-3-5-haiku-20241022 (fast)" -ForegroundColor Gray
-        Write-Host "  claude-3-opus-20240229 (most capable)" -ForegroundColor Gray
+        Write-Host "  claude-sonnet-4-6 (recommended)" -ForegroundColor Green
+        Write-Host "  claude-opus-4-6 (most capable)" -ForegroundColor Gray
+        Write-Host "  claude-haiku-4-5-20251001 (fast)" -ForegroundColor Gray
+        Write-Host "  claude-sonnet-4-5-20250929 (legacy)" -ForegroundColor Gray
     }
     elseif ($Provider -eq 'openai') {
         Write-Host "  gpt-4o (recommended)" -ForegroundColor Green
