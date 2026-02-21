@@ -72,9 +72,14 @@ Describe 'AppBuilder — Offline' {
                 Should -Be 16384
         }
 
-        It 'Returns known output limit for claude-sonnet-4-6' {
+        It 'Returns 64000 for claude-sonnet-4-6' {
             Get-BuildMaxTokens -Framework 'powershell' -Model 'claude-sonnet-4-6' |
-                Should -Be 8192
+                Should -Be 64000
+        }
+
+        It 'Returns 128000 for claude-opus-4-6' {
+            Get-BuildMaxTokens -Framework 'powershell' -Model 'claude-opus-4-6' |
+                Should -Be 128000
         }
 
         It 'Returns default 8192 for unknown models' {
@@ -423,6 +428,58 @@ $form = New-Object System.Windows.Forms.Form
         AfterAll {
             Remove-AppBuild -Name 'test-empty-prompt' -ErrorAction SilentlyContinue
             Remove-AppBuild -Name 'test-ws-prompt' -ErrorAction SilentlyContinue
+        }
+    }
+
+    # ── TRUNCATION GUARD ─────────────────────────────────────
+    Context 'Truncation Guard (Invoke-CodeGeneration)' {
+
+        It 'Returns failure with StopReason when response is truncated (max_tokens)' {
+            Mock Invoke-ChatCompletion {
+                return @{
+                    Content    = '```powershell app.ps1' + "`n" + 'Write-Host "incomplete'
+                    Model      = 'claude-sonnet-4-6'
+                    StopReason = 'max_tokens'
+                    Usage      = @{ prompt_tokens = 100; completion_tokens = 8192; total_tokens = 8292 }
+                }
+            }
+
+            $result = Invoke-CodeGeneration -Spec 'APP_NAME: test-app' -Framework 'powershell' -MaxTokens 8192
+            $result.Success    | Should -BeFalse
+            $result.StopReason | Should -Be 'max_tokens'
+            $result.Output     | Should -Match 'truncated'
+            $result.LogPath    | Should -Not -BeNullOrEmpty
+        }
+
+        It 'Returns failure with StopReason when response has length stop reason' {
+            Mock Invoke-ChatCompletion {
+                return @{
+                    Content    = '```python app.py' + "`n" + 'print("cut off'
+                    Model      = 'gpt-4o'
+                    StopReason = 'length'
+                    Usage      = @{ prompt_tokens = 100; completion_tokens = 16384; total_tokens = 16484 }
+                }
+            }
+
+            $result = Invoke-CodeGeneration -Spec 'APP_NAME: test-app' -Framework 'python-tk' -MaxTokens 16384
+            $result.Success    | Should -BeFalse
+            $result.StopReason | Should -Be 'max_tokens'
+            $result.Output     | Should -Match 'truncated'
+        }
+
+        It 'Proceeds normally when StopReason is stop (not truncated)' {
+            Mock Invoke-ChatCompletion {
+                return @{
+                    Content    = '```powershell app.ps1' + "`n" + 'Write-Host "hello world"' + "`n" + '```'
+                    Model      = 'claude-sonnet-4-6'
+                    StopReason = 'stop'
+                    Usage      = @{ prompt_tokens = 100; completion_tokens = 50; total_tokens = 150 }
+                }
+            }
+
+            $result = Invoke-CodeGeneration -Spec 'APP_NAME: test-app' -Framework 'powershell' -MaxTokens 64000
+            $result.Success | Should -BeTrue
+            $result.Files   | Should -Not -BeNullOrEmpty
         }
     }
 
