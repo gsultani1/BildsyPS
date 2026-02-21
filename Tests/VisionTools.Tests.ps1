@@ -162,23 +162,29 @@ Describe 'VisionTools — Live' -Tag 'Live' {
             $bmp.Save($script:LiveTestPng, [System.Drawing.Imaging.ImageFormat]::Png)
             $bmp.Dispose()
 
-            # Check if any vision-capable provider is configured
+            # Check if any vision-capable provider is configured AND reachable
             $script:HasVisionProvider = $false
             foreach ($pName in @('anthropic', 'openai', 'ollama')) {
                 $cfg = $global:ChatProviders[$pName]
-                if ($cfg) {
-                    $model = $cfg.DefaultModel
-                    if (Test-VisionSupport -Provider $pName -Model $model) {
-                        $script:VisionProvider = $pName
-                        $script:VisionModel = $model
-                        $script:HasVisionProvider = $true
-                        break
-                    }
+                if (-not $cfg) { continue }
+                $model = $cfg.DefaultModel
+                if (-not (Test-VisionSupport -Provider $pName -Model $model)) { continue }
+                # Verify reachability
+                $saved = $global:DefaultChatProvider
+                $global:DefaultChatProvider = $pName
+                $reachable = Test-ProviderReachable
+                $global:DefaultChatProvider = $saved
+                if ($reachable) {
+                    $script:VisionProvider = $pName
+                    $script:VisionModel = $model
+                    $script:HasVisionProvider = $true
+                    break
                 }
             }
         }
 
-        It 'Sends an image and receives a response' -Skip:(-not $script:HasVisionProvider) {
+        It 'Sends an image and receives a response' {
+            if (-not $script:HasVisionProvider) { Set-ItResult -Skipped -Because 'No vision-capable LLM provider configured'; return }
             $result = Send-ImageToAI -ImagePath $script:LiveTestPng -Prompt 'What color is this image?' -Provider $script:VisionProvider -Model $script:VisionModel
             $result.Success | Should -BeTrue
             $result.Output | Should -Not -BeNullOrEmpty

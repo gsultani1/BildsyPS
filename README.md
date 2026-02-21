@@ -7,7 +7,7 @@
 > Your terminal, orchestrated. BildsyPS is an AI shell environment that understands your context — your files, your git state, your running processes — and acts on your behalf. Chat with Claude, GPT, or local LLMs. Execute commands, manage files, search the web, run autonomous agents, and connect to MCP servers. All from PowerShell, all local-first, nothing phoning home.
 
 ![PowerShell](https://img.shields.io/badge/PowerShell-7.0%2B-blue)
-![Version](https://img.shields.io/badge/Version-1.3.0-blue)
+![Version](https://img.shields.io/badge/Version-1.3.1-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![AI](https://img.shields.io/badge/AI-Claude%20%7C%20GPT%20%7C%20Ollama-purple)
 
@@ -27,6 +27,7 @@
 - **Secret scanner**: Detects exposed API keys, tokens, and credentials in files and staged git commits
 - **Vision support**: Send screenshots and images to Claude/GPT-4o for analysis
 - **OCR integration**: Tesseract OCR for images, pdftotext for PDFs, with vision API fallback
+- **Tab completion**: Dynamic argument completers on all public functions — providers, session names, skill names, workflow names, build names, MCP servers, task IDs, artifact files, git branches
 
 ### 🧠 Autonomous Agent
 
@@ -210,6 +211,7 @@ Invoke-Workflow -Name daily_standup -StopOnError
 - `size` - Folder size analysis
 - `z` - Quick directory jumping
 - `..`, `...`, `....` - Quick parent navigation
+- `gco`, `gmerge`, `grb` - Git checkout/merge/rebase with branch tab completion
 
 ## Quick Start
 
@@ -466,6 +468,7 @@ See [VISION.md](VISION.md) for the full product direction.
 | ✅ | **App Builder** — describe an app in English → get a compiled .exe (PowerShell, Python-TK, Python-Web) |
 | ✅ | **E2E test suite** — 276 tests across 15 modules, 0 failures; 11 defects fixed; Pester v5 hardened |
 | ✅ | **UserSkills v2** — shell-invocable functions, `Invoke-UserSkill`, trigger phrase registration, auto-created JSON |
+| ✅ | **Tab completion** — 37 dynamic argument completers across 10 modules; `gm` → `gmerge` alias conflict resolved |
 | 🔜 | Browser automation — Selenium WebDriver integration |
 | 🔜 | Remote listener + webhooks — receive commands via Twilio/HTTP |
 | 🔜 | GUI layer — mission control dashboard for your entire computer |

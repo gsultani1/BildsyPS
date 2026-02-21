@@ -42,6 +42,12 @@ $global:ChatLogsPath = "$global:BildsyPSHome\logs\sessions"
 $global:ConfigPath = "$global:BildsyPSHome\config"
 $global:EnvFilePath = "$global:BildsyPSHome\config\.env"
 
+# Copy real ChatConfig.json so API keys are available in tests
+$realConfig = Join-Path $script:RepoRoot 'ChatConfig.json'
+if (Test-Path $realConfig) {
+    Copy-Item $realConfig -Destination "$global:BildsyPSHome\config\ChatConfig.json" -Force
+}
+
 # Profile-level globals that modules may reference
 if (-not $global:ProfileTimings) { $global:ProfileTimings = @{} }
 
@@ -115,6 +121,59 @@ if (-not $SkipHeartbeat) {
     if (Test-Path "$global:ModulesPath\AgentHeartbeat.ps1") {
         . "$global:ModulesPath\AgentHeartbeat.ps1"
     }
+}
+
+# ===== Test Provider Check =====
+function Test-ProviderReachable {
+    <#
+    .SYNOPSIS
+    Lightweight check: is a specific LLM provider actually usable?
+    Returns $true only if config exists AND (API key set OR local endpoint responds).
+    #>
+    param([string]$Provider = $global:DefaultChatProvider)
+    if (-not $global:ChatProviders -or -not $Provider) { return $false }
+    $cfg = $global:ChatProviders[$Provider]
+    if (-not $cfg) { return $false }
+
+    if ($cfg.ApiKeyRequired) {
+        $key = Get-ChatApiKey $Provider
+        return [bool]$key
+    }
+
+    # Local provider (ollama, lmstudio) — probe the endpoint
+    try {
+        $baseUrl = ($cfg.Endpoint -replace '/v1/chat/completions$', '' -replace '/chat$', '')
+        $null = Invoke-RestMethod -Uri "$baseUrl/api/tags" -TimeoutSec 2 -ErrorAction Stop
+        return $true
+    }
+    catch {
+        # Try OpenAI-compatible /models endpoint
+        try {
+            $baseUrl = ($cfg.Endpoint -replace '/chat/completions$', '')
+            $null = Invoke-RestMethod -Uri "$baseUrl/models" -TimeoutSec 2 -ErrorAction Stop
+            return $true
+        }
+        catch { return $false }
+    }
+}
+
+function Find-ReachableProvider {
+    <#
+    .SYNOPSIS
+    Find the first reachable LLM provider. Returns provider name or $null.
+    Tries default first, then all others.
+    #>
+    if (-not $global:ChatProviders) { return $null }
+    # Try default provider first
+    if ($global:DefaultChatProvider -and (Test-ProviderReachable -Provider $global:DefaultChatProvider)) {
+        return $global:DefaultChatProvider
+    }
+    # Try all configured providers
+    foreach ($pName in $global:ChatProviders.Keys) {
+        if ($pName -eq $global:DefaultChatProvider) { continue }
+        if (Test-ProviderReachable -Provider $pName) { return $pName }
+    }
+    return $null
 }
 
 # ===== Test Cleanup Helper =====

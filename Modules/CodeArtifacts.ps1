@@ -112,6 +112,23 @@ function Get-CodeBlocks {
         }
     }
 
+    # Handle truncated response: if still inside a code block at end of input, save it
+    if ($inBlock -and $currentCode.Count -gt 0) {
+        $idx++
+        $code = $currentCode -join "`n"
+        if ($code.Trim().Length -gt 0) {
+            $blocks += [PSCustomObject]@{
+                Index     = $idx
+                Language  = if ($currentLang) { $currentLang } else { 'text' }
+                Code      = $code
+                LineCount = $currentCode.Count
+                Saved     = $false
+                SavedPath = $null
+                Executed  = $false
+            }
+        }
+    }
+
     if ($Track -and $blocks.Count -gt 0) {
         $global:SessionArtifacts = $blocks
     }

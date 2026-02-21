@@ -24,10 +24,11 @@ Today it does things like:
 - **`build "a todo list app with categories"`** → generates code, validates it, compiles a standalone .exe, and tracks the build in SQLite
 - **`rebuild my-app "add dark mode"`** → applies diff-based edits to an existing build and recompiles
 - **`search meeting notes`** → FTS5 full-text search across all saved conversation sessions
+- **Tab ↹ on any parameter** → `Resume-Chat -Name <tab>` lists saved sessions; `Invoke-Workflow -Name <tab>` lists workflows; `gco -Branch <tab>` lists git branches; `Remove-AppBuild -Name <tab>` lists builds — every public function now has dynamic completers
 
 All of it runs locally. Nothing phones home. The AI can only run commands you've explicitly whitelisted.
 
-As of v1.3.0, the codebase has been fully audited: security hardened, parse errors eliminated, duplicate code removed, and intent ordering made deterministic. A comprehensive E2E test suite now covers 276 tests across 15 modules with 0 failures — the foundation is clean and verified.
+As of v1.3.1, the codebase has been fully audited: security hardened, parse errors eliminated, duplicate code removed, and intent ordering made deterministic. A comprehensive E2E test suite now covers 313 tests across 16 modules with 0 failures — the foundation is clean and verified. Every public function has dynamic tab completion; the `gm` alias conflict with `Get-Member` has been resolved (`gmerge`).
 
 ---
 
@@ -56,6 +57,9 @@ Dynamic multi-step task planning via the ReAct (Reason + Act) loop. The agent ha
 
 **6. App Builder** *(✅ complete)*
 Prompt-to-executable pipeline. Describe an app in plain English and get a compiled Windows `.exe`. Three build lanes: PowerShell/WinForms (default — zero external deps beyond ps2exe), Python-TK (Tkinter + PyInstaller), and Python-Web (PyWebView + PyInstaller). Token budget auto-detects from model context window. Generated code is validated for syntax errors, dangerous patterns, and secret leaks before compilation. Diff-based rebuild modifies existing builds without full regeneration. Every app includes "Built with BildsyPS" branding. All builds tracked in SQLite.
+
+**6b. Developer ergonomics** *(✅ complete)*
+Dynamic tab completion on all 22 newly covered public functions across 10 modules — providers, session names, skill names, workflow names, build names, MCP server names, heartbeat task IDs, artifact files, persistent alias names, and git branches. Completers are live-data: session names come from SQLite, build names from the filesystem, branch names from `git branch --list`. The `gm` alias conflict with PowerShell's built-in `Get-Member` was resolved by renaming to `gmerge`. 37 new tests verify all completers.
 
 **7. Mission control GUI** *(next)*
 A dashboard layer over the shell. Not a replacement — an amplifier. The terminal stays the engine; the GUI surfaces context, history, running tasks, and agent state in a way that's faster to scan than a command line.

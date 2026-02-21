@@ -607,6 +607,191 @@ Register-AgentTool -Name 'search_history' `
         return @{ Success = $true; Output = $output }
     }
 
+# --- spawn_agent (hierarchical agent orchestration) ---
+Register-AgentTool -Name 'spawn_agent' `
+    -Description 'Spawn one or more sub-agents to complete focused sub-tasks. Sub-agents run autonomously and return full results. Use "parallel":"true" with a "tasks" JSON array to run multiple sub-agents concurrently.' `
+    -Parameters @(
+        @{ Name = 'task'; Required = $false; Description = 'Single sub-task description (use this OR tasks, not both)' }
+        @{ Name = 'tasks'; Required = $false; Description = 'JSON array of sub-task objects: [{"task":"...","max_steps":10,"memory":"{}"},...] for parallel execution' }
+        @{ Name = 'parallel'; Required = $false; Description = 'Set to "true" to run tasks array in parallel via thread jobs (default: sequential)' }
+        @{ Name = 'max_steps'; Required = $false; Description = 'Max steps for the sub-agent (default: 10)' }
+        @{ Name = 'memory'; Required = $false; Description = 'JSON string of key-value pairs to pre-seed sub-agent memory' }
+    ) `
+    -Execute {
+        param($p)
+
+        # Determine execution mode: single task or multi-task
+        $singleTask = $p['task']
+        $tasksJson = $p['tasks']
+        $runParallel = $p['parallel'] -eq 'true'
+
+        if (-not $singleTask -and -not $tasksJson) {
+            return @{ Success = $false; Output = "Provide either 'task' (single) or 'tasks' (JSON array) parameter" }
+        }
+
+        # Build task list
+        $taskList = @()
+        if ($singleTask) {
+            $maxSteps = if ($p['max_steps']) { [int]$p['max_steps'] } else { 10 }
+            $seedMemory = $null
+            if ($p['memory']) {
+                try { $seedMemory = $p['memory'] | ConvertFrom-Json -AsHashtable } catch { $seedMemory = @{} }
+            }
+            $taskList += @{ Task = $singleTask; MaxSteps = $maxSteps; SeedMemory = $seedMemory }
+        }
+        else {
+            try {
+                $parsed = $tasksJson | ConvertFrom-Json
+                foreach ($t in $parsed) {
+                    $ms = if ($t.max_steps) { [int]$t.max_steps } else { 10 }
+                    $sm = $null
+                    if ($t.memory) {
+                        try { $sm = ($t.memory | ConvertTo-Json -Compress | ConvertFrom-Json -AsHashtable) } catch { $sm = @{} }
+                    }
+                    $taskList += @{ Task = $t.task; MaxSteps = $ms; SeedMemory = $sm }
+                }
+            }
+            catch {
+                return @{ Success = $false; Output = "Failed to parse tasks JSON: $($_.Exception.Message). Expected: [{`"task`":`"...`"}]" }
+            }
+        }
+
+        if ($taskList.Count -eq 0) {
+            return @{ Success = $false; Output = "No tasks to execute" }
+        }
+
+        # Memory strategy based on current depth:
+        #   depth 0→1: sub-agents share parent's $global:AgentMemory (pass as -ParentMemory)
+        #   depth 1→2: sub-agents get isolated copy (pass as -Memory clone, no -ParentMemory)
+        $currentDepth = $global:AgentDepth
+        $useSharedMemory = ($currentDepth -le 1)
+
+        # --- Single task (or sequential multi-task) ---
+        if ($taskList.Count -eq 1 -or -not $runParallel) {
+            $allResults = @()
+            foreach ($taskDef in $taskList) {
+                $invokeParams = @{
+                    Task        = $taskDef.Task
+                    MaxSteps    = $taskDef.MaxSteps
+                    Silent      = $true
+                    AutoConfirm = $true
+                }
+                if ($useSharedMemory) {
+                    # Depth 0→1: pass shared memory reference
+                    $invokeParams.ParentMemory = $global:AgentMemory
+                    if ($taskDef.SeedMemory) {
+                        foreach ($k in $taskDef.SeedMemory.Keys) {
+                            $global:AgentMemory[$k] = $taskDef.SeedMemory[$k]
+                        }
+                    }
+                }
+                else {
+                    # Depth 1→2: isolated copy
+                    $isolated = if ($taskDef.SeedMemory) { $taskDef.SeedMemory.Clone() } else { @{} }
+                    $invokeParams.Memory = $isolated
+                }
+
+                $subResult = Invoke-AgentTask @invokeParams
+
+                # Depth-2 agents: write result back to parent memory under namespaced key
+                if (-not $useSharedMemory -and $subResult.Summary) {
+                    $safeKey = "subagent:" + ($taskDef.Task -replace '[^a-zA-Z0-9_]', '_').Substring(0, [math]::Min(40, $taskDef.Task.Length))
+                    $global:AgentMemory[$safeKey] = $subResult.Summary
+                }
+
+                $allResults += @{
+                    Task    = $taskDef.Task
+                    Success = $subResult.Success
+                    Summary = $subResult.Summary
+                    Steps   = $subResult.StepCount
+                    Time    = $subResult.TotalTime
+                    Memory  = if ($subResult.Memory) { $subResult.Memory } else { @{} }
+                }
+            }
+
+            if ($allResults.Count -eq 1) {
+                $r = $allResults[0]
+                $output = "Sub-agent result for '$($r.Task)':`nSuccess: $($r.Success)`nSteps: $($r.Steps) | Time: $($r.Time)s`nSummary: $($r.Summary)"
+                return @{ Success = $r.Success; Output = $output }
+            }
+            else {
+                $output = "Sequential sub-agent results ($($allResults.Count) tasks):`n"
+                $i = 1
+                foreach ($r in $allResults) {
+                    $icon = if ($r.Success) { 'OK' } else { 'FAIL' }
+                    $output += "`n$i. [$icon] $($r.Task)`n   Summary: $($r.Summary)`n   Steps: $($r.Steps) | Time: $($r.Time)s`n"
+                    $i++
+                }
+                $allSuccess = ($allResults | Where-Object { -not $_.Success }).Count -eq 0
+                return @{ Success = $allSuccess; Output = $output }
+            }
+        }
+
+        # --- Parallel multi-task via Start-ThreadJob ---
+        # Each parallel job gets isolated memory — no shared state, no race conditions.
+        # Results are merged on completion.
+        $jobs = @()
+        foreach ($taskDef in $taskList) {
+            $taskStr = $taskDef.Task
+            $taskMaxSteps = $taskDef.MaxSteps
+            $taskSeedMemory = if ($taskDef.SeedMemory) { $taskDef.SeedMemory.Clone() } else { @{} }
+
+            # Thread jobs share the process and loaded modules but NOT variable scope.
+            # We pass everything as arguments. $global:AgentDepth will be visible since
+            # it's global, and the finally block in Invoke-AgentTask handles decrement.
+            $job = Start-ThreadJob -ScriptBlock {
+                param($t, $ms, $mem)
+                $result = Invoke-AgentTask -Task $t -MaxSteps $ms -Memory $mem -Silent -AutoConfirm
+                return @{
+                    Task    = $t
+                    Success = $result.Success
+                    Summary = $result.Summary
+                    Steps   = $result.StepCount
+                    Time    = $result.TotalTime
+                    Memory  = if ($result.Memory) { $result.Memory } else { @{} }
+                }
+            } -ArgumentList $taskStr, $taskMaxSteps, $taskSeedMemory
+
+            $jobs += @{ Job = $job; Task = $taskStr }
+        }
+
+        # Wait for all jobs to complete
+        $jobResults = @()
+        foreach ($j in $jobs) {
+            $j.Job | Wait-Job | Out-Null
+            $jobOutput = Receive-Job -Job $j.Job
+            Remove-Job -Job $j.Job -Force -ErrorAction SilentlyContinue
+
+            if ($jobOutput -and $jobOutput.Task) {
+                $jobResults += $jobOutput
+                # Write namespaced result back to parent memory
+                $safeKey = "subagent:" + ($j.Task -replace '[^a-zA-Z0-9_]', '_').Substring(0, [math]::Min(40, $j.Task.Length))
+                $global:AgentMemory[$safeKey] = $jobOutput.Summary
+            }
+            else {
+                $jobResults += @{
+                    Task    = $j.Task
+                    Success = $false
+                    Summary = "Job returned no output"
+                    Steps   = 0
+                    Time    = 0
+                    Memory  = @{}
+                }
+            }
+        }
+
+        # Format combined results
+        $output = "Parallel sub-agent results ($($jobResults.Count) tasks):`n"
+        $i = 1
+        foreach ($r in $jobResults) {
+            $icon = if ($r.Success) { 'OK' } else { 'FAIL' }
+            $output += "`n$i. [$icon] $($r.Task)`n   Summary: $($r.Summary)`n   Steps: $($r.Steps) | Time: $($r.Time)s`n"
+            $i++
+        }
+        $allSuccess = ($jobResults | Where-Object { -not $_.Success }).Count -eq 0
+        return @{ Success = $allSuccess; Output = $output }
+    }
+
 # ===== Aliases =====
 Set-Alias agent-tools Get-AgentTools -Force
 

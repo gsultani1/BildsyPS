@@ -127,17 +127,15 @@ Describe 'AgentHeartbeat — Live' -Tag 'Live' {
 
     Context 'Invoke-AgentHeartbeat' {
         BeforeAll {
-            $script:HasProvider = $false
-            if ($global:ChatProviders -and $global:DefaultChatProvider) {
-                $cfg = $global:ChatProviders[$global:DefaultChatProvider]
-                if ($cfg) { $script:HasProvider = $true }
-            }
+            $script:LiveProvider = Find-ReachableProvider
+            $script:HasProvider = [bool]$script:LiveProvider
             # Reset task file for live test
             $global:HeartbeatTasksPath = Join-Path $global:TestTempRoot 'config\agent-tasks-live.json'
             $global:HeartbeatLogPath = Join-Path $global:TestTempRoot 'logs\heartbeat-live.log'
         }
 
-        It 'Executes a forced heartbeat with a simple task' -Skip:(-not $script:HasProvider) {
+        It 'Executes a forced heartbeat with a simple task' {
+            if (-not $script:HasProvider) { Set-ItResult -Skipped -Because 'No LLM provider configured'; return }
             Add-AgentTask -Id 'live-math' -Task 'What is 2+2? Use the calculator tool.' -Schedule 'daily' -Time '00:00'
             $result = Invoke-AgentHeartbeat -Force
             $result.TasksChecked | Should -BeGreaterOrEqual 1
@@ -149,7 +147,8 @@ Describe 'AgentHeartbeat — Live' -Tag 'Live' {
             $ran.lastResult | Should -Not -BeNullOrEmpty
         }
 
-        It 'Heartbeat log file is written' -Skip:(-not $script:HasProvider) {
+        It 'Heartbeat log file is written' {
+            if (-not $script:HasProvider) { Set-ItResult -Skipped -Because 'No LLM provider configured'; return }
             Test-Path $global:HeartbeatLogPath | Should -BeTrue
             $content = Get-Content $global:HeartbeatLogPath -Raw
             $content | Should -Match 'Heartbeat check'

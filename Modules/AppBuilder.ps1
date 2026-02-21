@@ -184,7 +184,8 @@ function Get-BuildFramework {
 function Get-BuildMaxTokens {
     <#
     .SYNOPSIS
-    Auto-detect max tokens for code generation based on model context window and lane.
+    Determine max output tokens for code generation based on the model's actual output limit.
+    No artificial caps — uses the model's real max output capacity.
     #>
     param(
         [Parameter(Mandatory)][string]$Framework,
@@ -194,31 +195,37 @@ function Get-BuildMaxTokens {
 
     if ($Override -gt 0) { return $Override }
 
-    # Lane caps and floors
-    $caps = @{ 'powershell' = 16000; 'python-tk' = 16000; 'python-web' = 64000 }
-    $floors = @{ 'powershell' = 4096; 'python-tk' = 4096; 'python-web' = 8192 }
-
-    $cap = $caps[$Framework]
-    $floor = $floors[$Framework]
-
-    # Auto-detect from model context
-    $contextLimit = if ($Model -and (Get-Command Get-ModelContextLimit -ErrorAction SilentlyContinue)) {
-        Get-ModelContextLimit -Model $Model
-    } else {
-        $global:DefaultContextLimit
+    # Known max OUTPUT token limits per model (not context window)
+    $outputLimits = @{
+        'claude-sonnet-4-6'          = 8192
+        'claude-sonnet-4-5'          = 8192
+        'claude-3-5-sonnet'          = 8192
+        'claude-3-opus'              = 4096
+        'claude-3-haiku'             = 4096
+        'gpt-4o'                     = 16384
+        'gpt-4o-mini'                = 16384
+        'gpt-4-turbo'                = 4096
+        'gpt-4'                      = 8192
+        'o1'                         = 32768
+        'o1-mini'                    = 65536
     }
 
-    # Use 40% of context for code generation response
-    $autoTokens = [math]::Floor($contextLimit * 0.4)
-    $result = [math]::Min($autoTokens, $cap)
-    $result = [math]::Max($result, $floor)
-
-    if ($contextLimit -lt 8192) {
-        Write-Host "[AppBuilder] Warning: Model context ($contextLimit tokens) is small. Complex apps may be truncated." -ForegroundColor Yellow
-        Write-Host "  Consider: build -tokens 16000 `"...`" or switch to a larger model." -ForegroundColor DarkYellow
+    # Exact match
+    if ($Model -and $outputLimits.ContainsKey($Model)) {
+        return $outputLimits[$Model]
     }
 
-    return $result
+    # Fuzzy match: check if model name contains a known key (longest key first for specificity)
+    if ($Model) {
+        foreach ($key in ($outputLimits.Keys | Sort-Object { $_.Length } -Descending)) {
+            if ($Model -like "*$key*") {
+                return $outputLimits[$key]
+            }
+        }
+    }
+
+    # Default: 8192 is safe for most providers
+    return 8192
 }
 
 # ===== Prompt Refinement =====
@@ -315,6 +322,26 @@ function Invoke-CodeGeneration {
         Write-Host "[AppBuilder] Generating code ($Framework, max $MaxTokens tokens)..." -ForegroundColor Cyan
         $response = Invoke-ChatCompletion @params
         $content = if ($response.Content) { $response.Content } else { "$response" }
+
+        # Always save the raw LLM response for debugging
+        $logDir = Join-Path $global:AppBuilderPath '_logs'
+        if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+        $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $logFile = Join-Path $logDir "codegen_${timestamp}.md"
+        $logContent = "# Code Generation Response`n"
+        $logContent += "# Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n"
+        $logContent += "# Framework: $Framework`n"
+        $logContent += "# MaxTokens: $MaxTokens`n"
+        $logContent += "# StopReason: $($response.StopReason)`n"
+        $logContent += "# Model: $($response.Model)`n`n"
+        $logContent += $content
+        Set-Content -Path $logFile -Value $logContent -Encoding UTF8
+        Write-Host "[AppBuilder] Raw response saved to: $logFile" -ForegroundColor DarkGray
+
+        # Warn if response was truncated
+        if ($response.StopReason -eq 'max_tokens' -or $response.StopReason -eq 'length') {
+            Write-Host "[AppBuilder] Warning: Response truncated at $MaxTokens tokens. Code may be incomplete." -ForegroundColor Yellow
+        }
 
         # Parse code blocks using CodeArtifacts
         $files = @{}
@@ -489,9 +516,15 @@ function Invoke-BildsyPSBranding {
         [switch]$NoBranding
     )
 
-    if ($NoBranding) { return $Files }
-
     $brandingText = 'Built with BildsyPS'
+
+    # Strip branding from all files when -NoBranding (LLM prompts include branding instructions)
+    if ($NoBranding) {
+        foreach ($key in @($Files.Keys)) {
+            $Files[$key] = $Files[$key] -replace [regex]::Escape($brandingText) + '[^\r\n]*', ''
+        }
+        return $Files
+    }
 
     switch ($Framework) {
         'powershell' {
@@ -558,6 +591,27 @@ def _bildsyps_about():
     }
 
     return $Files
+}
+
+# ===== Name Sanitization =====
+
+function Get-SafeBuildName {
+    <#
+    .SYNOPSIS
+    Sanitize a build name for safe filesystem use.
+    Strips invalid characters, trims whitespace, lowercases, and caps length at 40.
+    #>
+    param(
+        [Parameter(Mandatory = $false)]
+        [AllowEmptyString()]
+        [string]$Name
+    )
+    if (-not $Name -or $Name.Trim() -eq '') { return '' }
+    $safe = $Name.Trim()
+    $safe = $safe -replace '[<>:"/\\|?*]', ''
+    $safe = ($safe -replace '[^\w\-]', '-').Trim('-').ToLower()
+    if ($safe.Length -gt 40) { $safe = $safe.Substring(0, 40).TrimEnd('-') }
+    return $safe
 }
 
 # ===== Build Functions =====
@@ -948,7 +1002,7 @@ function New-AppBuild {
     Path to .ico file for the executable.
     #>
     param(
-        [Parameter(Mandatory)][string]$Prompt,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Prompt,
         [string]$Framework,
         [string]$Name,
         [int]$MaxTokens = 0,
@@ -959,6 +1013,11 @@ function New-AppBuild {
     )
 
     $totalStart = Get-Date
+
+    # Validate prompt early — don't waste an LLM call on empty input
+    if (-not $Prompt -or $Prompt.Trim() -eq '') {
+        return @{ Success = $false; Output = "Prompt cannot be empty" }
+    }
 
     # Ensure builds directory exists
     if (-not (Test-Path $global:AppBuilderPath)) {
@@ -993,7 +1052,7 @@ function New-AppBuild {
         }
         if (-not $Name) { $Name = "bildsyps-app-$(Get-Date -Format 'yyyyMMdd-HHmmss')" }
     }
-    $Name = ($Name -replace '[^\w\-]', '-').Trim('-').ToLower()
+    $Name = Get-SafeBuildName -Name $Name
 
     Write-Host "[AppBuilder] App name: $Name" -ForegroundColor Cyan
 

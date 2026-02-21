@@ -4,6 +4,142 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0] - 2026-02-20
+
+### Added
+
+#### Hierarchical Agent Orchestration — `spawn_agent` tool
+
+- **`spawn_agent` tool** registered in `AgentTools.ps1` — allows the LLM to dynamically spawn sub-agents for focused sub-tasks
+  - **Single task mode**: `{"tool":"spawn_agent","task":"do something specific"}`
+  - **Parallel mode**: `{"tool":"spawn_agent","tasks":"[{\"task\":\"research X\"},{\"task\":\"research Y\"}]","parallel":"true"}` via `Start-ThreadJob`
+  - Optional `max_steps` (default 10) and `memory` (JSON seed) per sub-task
+- **Depth tracking** (`$global:AgentDepth`, `$global:AgentMaxDepth = 2`) prevents runaway recursion
+  - Depth guard returns `DepthLimit` abort before incrementing when at max depth
+  - Depth counter decremented in `finally` block (semaphore pattern) — safe even on exceptions
+- **Memory isolation strategy**:
+  - Depth 0→1: sub-agents **share** parent's `$global:AgentMemory` via `-ParentMemory` reference
+  - Depth 1→2: sub-agents get **isolated** memory copy; results returned via namespaced key (`subagent:<task_hash>`)
+  - Parallel jobs: fully isolated memory per thread job, merged on completion — no race conditions
+- **`-Silent` switch** on `Invoke-AgentTask` — suppresses all `Write-Host` output for sub-agent use; ASK prompts auto-resolve as STUCK
+- **`-ParentMemory` parameter** on `Invoke-AgentTask` — passes shared memory reference for depth 0→1 sub-agents
+- **System prompt** updated with `spawn_agent` usage documentation (RULES section)
+- **`Tests/SpawnAgent.Tests.ps1`** — 24 new tests covering: tool registration, depth guard, memory isolation, input validation, Silent mode, finally-block safety; **338 total tests passing**
+
+## [1.3.1] - 2026-02-20
+
+### Added
+
+#### Tab Completion — 22 new dynamic argument completers across 10 modules
+
+| Command | Parameter | Source |
+|---------|-----------|--------|
+| `Set-DefaultChatProvider`, `Get-ChatModels`, `Test-ChatProvider` | `-Provider` | `$global:ChatProviders.Keys` |
+| `Start-ChatSession`, `chat` | `-Provider` | `$global:ChatProviders.Keys` |
+| `Resume-Chat`, `Remove-ChatSession`, `Export-ChatSession` | `-Name` | SQLite sessions → JSON index fallback |
+| `Invoke-UserSkill`, `Remove-UserSkill` | `-Name` | `$global:LoadedUserSkills.Keys` |
+| `Invoke-Workflow` | `-Name` | `$global:Workflows.Keys` (tooltip = description) |
+| `Connect-MCPServer` | `-Name` | `$global:MCPServers.Keys` (registered servers) |
+| `Disconnect-MCPServer`, `Get-MCPTools`, `Invoke-MCPTool` | `-Name` / `-ServerName` | `$global:MCPConnections.Keys` (connected servers) |
+| `Remove-AppBuild`, `Update-AppBuild` | `-Name` | Subdirectories of `$global:AppBuilderPath` |
+| `New-AppBuild` | `-Framework` | Static: `powershell`, `python-tk`, `python-web` |
+| `Remove-AgentTask`, `Enable-AgentTask`, `Disable-AgentTask` | `-Id` | `Get-AgentTaskList` (tooltip = task description) |
+| `Remove-PersistentAlias` | `-Name` | Parsed `Set-Alias` lines from `$global:UserAliasesPath` |
+| `Remove-Artifact` | `-Name` | Files in `$global:ArtifactsPath` |
+| `gco`, `gmerge`, `grb` | `-Branch` | `git branch --list` |
+
+- **`Tests/TabCompletion.Tests.ps1`** — 37 new tests covering all completers; **313 total tests, 0 failures**
+
+### Fixed
+- **`gm` → `gmerge`** (`NavigationUtils.ps1`) — `gm` conflicted with PowerShell's built-in `gm` alias for `Get-Member`, silently preventing the tab completer from firing. Renamed to `gmerge`.
+
+---
+
+## [1.3.0] - 2026-02-20
+
+### Added
+
+#### App Builder — Prompt to .exe (`AppBuilder.ps1`, ~1259 lines)
+- **3 build lanes**: PowerShell/WinForms via `ps2exe` (default, zero Python deps), Python-TK via PyInstaller, Python-Web (PyWebView) via PyInstaller
+- **2-stage LLM pipeline**: prompt refinement → code generation, both via `Invoke-ChatCompletion`
+- **Token budget auto-detect**: reads model context window via `Get-ModelContextLimit`, applies per-lane caps (PS/TK: 16K, Web: 64K) and floors (4K/8K); user override via `-tokens` flag
+- **Branding injection**: every generated app includes "Built with BildsyPS"; `Invoke-BildsyPSBranding` patches deterministically if LLM omits it; `-nobranding` flag reserved for future paid tier
+- **Code validation**: PowerShell AST syntax check / Python `ast.parse`, dangerous pattern scan (`os.system`, `subprocess`, `Remove-Item -Recurse`, `Start-Process -Verb RunAs`), secret leak scan via `Invoke-SecretScan`
+- **Diff-based rebuild**: `Update-AppBuild` applies FIND/REPLACE edits to existing source; falls back to full regeneration on "rewrite"/"redesign" triggers
+- **SQLite build tracking**: `builds` table in `bildsyps.db`, lazy-created via `Initialize-BuildsTable`
+- **Chat commands**: `build "prompt"`, `builds`, `rebuild <name> "changes"`
+- **Agent tool**: `build_app` registered as 17th tool in `AgentTools.ps1`
+- **Intent**: `build_app` in `IntentRegistry.ps1` + `IntentActionsSystem.ps1`
+
+#### Vision Model Support (`VisionTools.ps1`, ~350 lines)
+- `Capture-Screenshot` — .NET `System.Drawing` screen capture, optional `-Region`, `-FullResolution`
+- `Get-ClipboardImage` — grab image from clipboard
+- `ConvertTo-ImageBase64` — file to base64 with media type detection (png/jpg/gif/webp/bmp), 20MB limit
+- `Resize-ImageBitmap` — auto-resize to 2048px longest edge (configurable via `$global:VisionMaxEdge`)
+- `New-VisionMessage` — builds multimodal content arrays for Anthropic and OpenAI formats
+- `Send-ImageToAI` — unified entry point: encode image → build message → call `Invoke-ChatCompletion`
+- `Test-VisionSupport` — checks model against `$global:VisionModels` list
+- `Invoke-Vision` — convenience wrapper (alias: `vision`)
+- Chat commands: `vision`, `vision <path>`, `vision --full`, `vision <prompt>`
+- Vision-capable models: `claude-3-5-sonnet`, `gpt-4o`, `gpt-4o-mini`, `llava`, `llama3.2-vision`, `moondream`, `bakllava`
+- Agent tool: `screenshot` registered as 13th tool
+
+#### OCR Integration (`OCRTools.ps1`)
+- Tesseract OCR for image text extraction (`winget install UB-Mannheim.TesseractOCR`)
+- `pdftotext` for PDF text extraction (Xpdf tools)
+- Vision API fallback when Tesseract is unavailable
+- Agent tool: `ocr` registered as 14th tool
+- Intent: `ocr_file` in `IntentRegistry.ps1`
+
+#### SQLite + FTS5 Conversation Persistence (`ChatStorage.ps1`)
+- Full SQLite backend replacing JSON file storage
+- Schema: `sessions(id, name, created, updated, provider, model)`, `messages(session_id, role, content, timestamp)`
+- FTS5 full-text search across all conversation history
+- `Get-ChatSessionsFromDb`, `Save-ChatToDb`, `Search-ChatDb`
+- `$global:ChatDbPath` defaults to `bildsyps.db` at module load (prevents init crash when `ChatSession.ps1` loads after `ChatStorage.ps1`)
+
+#### Secret Scanner (`SecretScanner.ps1`)
+- Detects API keys, tokens, and credentials in files and staged git commits
+- Runs at profile load; warns on findings without blocking startup
+- Patterns: AWS keys, GitHub tokens, Anthropic/OpenAI keys, generic `Bearer` tokens, private keys
+- `Invoke-SecretScan` callable by App Builder code validation pipeline
+
+#### Agent Heartbeat (`AgentHeartbeat.ps1`)
+- Cron-triggered background agent tasks via Windows Task Scheduler
+- `Add-AgentTask`, `Remove-AgentTask`, `Enable-AgentTask`, `Disable-AgentTask`, `Get-AgentTaskList`
+- Schedule types: `daily`, `weekly`, `interval`, `startup`, `logon`
+- Chat commands: `heartbeat start`, `heartbeat stop`
+- Agent tool: `search_history` registered as 15th tool (FTS5 search over past sessions)
+
+#### E2E Test Suite — 276 tests, 0 failures
+- 15 test files covering all major modules
+- 11 application defects found and fixed during audit:
+  1. `OrderedDictionary.ContainsKey()` → `.Contains()` — 10 sites in `PluginLoader.ps1` (7) and `UserSkills.ps1` (3)
+  2. `Get-Content` char coercion — wrapped with `@()` in `SecretScanner.ps1`, `ConfigLoader.ps1`, `PersistentAliases.ps1`
+  3. Version mismatch — profile had `1.2.0`, module declared `1.3.0`
+  4. `SecretScanner` single finding returned as bare hashtable — fixed with `return @(,$findings)`
+  5. `ResponseParser` null `ChatSessionHistory` crash on second `+=` — added null guard
+  6. `ProfileTimings` null crash in `PluginLoader.ps1` — added init in bootstrap
+  7. `ChatStorage` DB init crash — `$global:ChatLogsPath` null at load time — added default init
+  8. `UserSkills` not shell-invocable — added `Set-Item function:$skillName` per skill; `Remove-Item` on unregister
+  9. `UserSkills.json` not auto-created on first run — `Import-UserSkills` now copies example file
+  10. `Get-AppBuilds` returns `$null` — added `return $builds`; fixed `$($b.BuildTime)` interpolation
+  11. `AppBuilder` missing dangerous code patterns — added `os.system`, `subprocess`, `Remove-Item -Recurse`, `Start-Process -Verb RunAs` to `Test-GeneratedCode`
+
+#### UserSkills v2
+- `Invoke-UserSkill` — public function to execute skills by name with `{param}` substitution; returns `@{ Success; Output; Error }`
+- Trigger phrase registration — `Import-UserSkills` registers `triggers` array into `$global:IntentAliases`; cleanup in `Unregister-UserSkills` and `Remove-UserSkill`
+- Shell-invocable functions — each loaded skill creates a global PowerShell function via `Set-Item -Path "function:$skillName"`
+- `UserSkills.json` auto-created from `UserSkills.example.json` on first run
+
+### Changed
+- `BildsyPSVersion` bumped to `1.3.0` in profile
+- `IntentAliasSystem.ps1` load order: added `AgentTools.ps1` before `AgentLoop.ps1`
+- Agent tools count: 12 → 17 (screenshot, ocr, build_app, search_history added)
+- Intent count: 77+ → 80+ (Vision and Productivity categories added)
+
+---
+
 ## [1.2.0] - 2026-02-20
 
 ### Added
@@ -72,6 +208,242 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `ChatSession.ps1` — Added agent slash commands to REPL switch block
 - `ProfileHelp.ps1` — Updated system prompt with agent tools and slash command info
 - Intent count: 30+ → 77+ (expanded intent system)
+
+---
+
+## [1.1.9] - 2026-02-19
+
+### Added
+
+#### Agent Architecture v1 — ReAct Loop (`AgentLoop.ps1`, ~310 lines)
+- `Invoke-AgentTask` — ReAct (Reason + Act) loop: LLM↔intent cycle until DONE/STUCK/step limit
+- `Get-AgentSystemPrompt` — builds agent prompt from all 76 intents in `$global:IntentMetadata`
+- `Format-AgentObservation` — token-aware result compression (truncates at 2000 chars)
+- `Stop-AgentTask` — sets `$global:AgentAbort` flag for Ctrl+C abort
+- Protocol: `THOUGHT` / `ACTION {"intent":"..."}` / `DONE` / `STUCK`
+- Config: `$global:AgentMaxSteps = 10`, `$global:AgentMaxTokenBudget = 8000`
+- Aliases: `agent`, `agent-stop`
+- Chat command: `agent <task>` inside REPL
+- Intent: `agent_task` registered in `IntentRegistry.ps1` + `IntentActionsSystem.ps1`
+
+### Fixed
+
+#### Deduplication & Safety Fixes
+- **`AIExecution.ps1` deleted** — was a complete duplicate of `SafetySystem.ps1` (9 functions, 8 globals). `SafetySystem.ps1` version used `Start-ThreadJob` with 30-second timeout vs bare `Invoke-Expression`. Removed load line from profile.
+- **`SystemCleanup.ps1`** — bare commands (`ipconfig /flushdns`, `Stop-Process -Name explorer -Force`, `Start-Process explorer.exe`) executed on every dot-source including `reload-all`. Wrapped all commands in `Invoke-SystemCleanup` with confirmation prompt and `-Force` bypass. Added `cleanup` alias.
+- **`SystemUtilities.ps1`** — removed duplicate `ll`, `la`, `lsd`, `lsf` (canonical versions in `NavigationUtils.ps1`)
+- **`TerminalTools.ps1`** — removed duplicate `Invoke-FzfHistory`, `Invoke-FzfFile`, `Invoke-FzfDirectory`, `Invoke-FzfEdit`, `Ctrl+R` binding, and `fh`/`ff`/`fd`/`fe` aliases (canonical in `FzfIntegration.ps1`; `Ctrl+R` was being registered twice)
+- **`SafetySystem.ps1`** — removed `Get-SafeActions`, `Test-SafeAction`, `Invoke-SafeAction` which duplicated `CommandValidation.ps1`
+
+---
+
+## [1.1.8] - 2026-02-19
+
+### Added
+
+#### `IntentAliasSystem.ps1` Modularization
+Split the 2790-line monolith into 6 focused files — zero breaking changes:
+
+| File | Lines | Contents |
+|------|-------|----------|
+| `IntentRegistry.ps1` | ~490 | 75 intent definitions, `$global:CategoryDefinitions`, `$global:IntentCategories` |
+| `IntentActions.ps1` | ~760 | Core intent scriptblocks: documents, files, web, browser, code artifacts, clipboard, git, MCP, calendar |
+| `IntentActionsSystem.ps1` | ~700 | System/filesystem/composite/workflow scriptblocks: apps, services, processes, scheduled tasks |
+| `WorkflowEngine.ps1` | ~130 | `$global:Workflows`, `Invoke-Workflow`, `Get-Workflows`, `workflow`/`workflows` aliases |
+| `IntentRouter.ps1` | ~470 | `Invoke-IntentAction`, `Test-Intent`, `Show-IntentHelp`, `Get-IntentInfo`, tab completion, `intent`/`intent-help` aliases |
+| `IntentAliasSystem.ps1` | 17 | Thin orchestrator — dot-sources the 5 files above |
+
+- `$global:IntentAliases` changed from `@{}` to `[ordered]@{}` — deterministic intent ordering in agent prompts and `intent-help`
+- Load order: `IntentRegistry` → `IntentActions` → `IntentActionsSystem` → `WorkflowEngine` → `IntentRouter` → `AgentTools` → `AgentLoop`
+
+---
+
+## [1.1.7] - 2026-02-19
+
+### Added
+
+#### Code Artifacts (`CodeArtifacts.ps1`, ~610 lines)
+- Auto-detects and tracks AI-generated code blocks in `$global:SessionArtifacts` after every AI response
+- Chat commands: `code` (list blocks), `save <#>`, `save <#> filename`, `run <#>`, `save-all`, `artifacts`
+- AI intents: `save_code`, `run_code`, `list_artifacts`
+- Execution support: PowerShell, Python, JavaScript, TypeScript, Bash, Ruby, Go, Rust, C#, HTML, Batch
+- Save-only support: SQL, CSS, JSON, YAML, XML, Markdown, CSV, TOML, Dockerfile, C, C++, Java
+- All `run_code` executions require user confirmation; `RequiresConfirmation` safety tier
+- Temp files cleaned up after execution
+
+#### Browser Awareness (`BrowserAwareness.ps1`, ~350 lines)
+- Three-strategy URL detection: UI Automation (address bar COM), window title parsing, browser history SQLite
+- Supports Chrome, Edge, Firefox, Brave (auto-detected by process name)
+- Intents: `browser_tab` (URL + title + browser + method), `browser_content` (URL + fetched page text)
+- Aliases: `browser-url`, `browser-page`, `browser-tabs`
+
+---
+
+## [1.1.6] - 2026-02-19
+
+### Added
+
+#### Custom User Skills (`UserSkills.ps1`, ~430 lines)
+- Users define custom intents via `UserSkills.json` — no PowerShell required
+- Step types: `{"command": "git checkout {branch}"}` (raw PowerShell) and `{"intent": "git_status"}` (existing intents)
+- `{paramName}` substitution with per-parameter defaults
+- `"confirm": true` maps to `RequiresConfirmation` safety tier
+- Conflict detection — skills cannot overwrite core or plugin intents
+- AI integration — `Get-UserSkillsPrompt` injects skill list into LLM system prompt
+- `Get-IntentInfo` shows `Source: user-skill` for JSON-defined intents
+
+| Function | Alias | Description |
+|----------|-------|-------------|
+| `Get-UserSkills` | `skills` | List loaded user skills |
+| `New-UserSkill` | `new-skill` | Interactive skill creator |
+| `Remove-UserSkill` | — | Delete skill from JSON + unregister |
+| `Import-UserSkills` | — | Load skills from JSON |
+| `Update-UserSkills` | `reload-skills` | Unregister + re-import |
+
+- `UserSkills.example.json` — documented template with 4 example skills (deploy, morning report, backup, project init)
+
+#### Plugin Architecture v2 (`PluginLoader.ps1`, ~500 → ~1035 lines)
+Expanded with 7 new subsystems — zero breaking changes to existing plugins:
+
+| Subsystem | Description |
+|-----------|-------------|
+| Dependency resolution | `Resolve-PluginLoadOrder` — topological sort; circular dep detection; `core:` prefix |
+| Version compatibility | `$PluginInfo.MinBildsyPSVersion` / `MaxBildsyPSVersion` — skips out-of-range plugins with warning |
+| Per-plugin config | `$PluginConfig` defaults + `Plugins/Config/<name>.json` user overrides; `Get/Set/Reset-PluginConfig` |
+| Helper function registry | `$PluginFunctions` → `$global:PluginHelpers[name]` — scriptblocks shared across plugins |
+| Lifecycle hooks | `$PluginHooks.OnLoad` / `OnUnload` — run after merge / before removal; errors caught and logged |
+| Self-test framework | `$PluginTests` + `Test-BildsyPSPlugin` — `test-plugin -Name` or `-All`; pass/fail report |
+| Hot-reload file watcher | `Watch-BildsyPSPlugins` / `Stop-WatchBildsyPSPlugins` — `FileSystemWatcher` on `Plugins/`; debounced |
+
+- New aliases: `test-plugin`, `watch-plugins`, `plugin-config`
+- New example plugins: `_Pomodoro.ps1` (Pomodoro timer with config, hooks, tests, toast), `_QuickNotes.ps1` (JSON note-taking with CRUD, search, tests)
+- Full plugin variable set: `$PluginIntents`, `$PluginMetadata`, `$PluginCategories`, `$PluginWorkflows`, `$PluginInfo`, `$PluginConfig`, `$PluginFunctions`, `$PluginHooks`, `$PluginTests`
+
+---
+
+## [1.1.5] - 2026-02-18
+
+### Added
+
+#### Plugin Architecture v1 (`PluginLoader.ps1`, ~500 lines)
+- Drop-in loading — place a `.ps1` in `Plugins/`, run `reload-plugins`
+- `Enable-BildsyPSPlugin` / `Disable-BildsyPSPlugin` — toggle via `_` prefix rename
+- `Unregister-BildsyPSPlugin` — cleanly removes all contributions from registries
+- `new-plugin 'Name'` — scaffolds a ready-to-edit plugin file from template
+- Conflict protection — duplicate intent/workflow names warned and skipped; core never overwritten
+- Plugin intents dynamically injected into LLM system prompt
+- `Get-IntentInfo` shows `Source: plugin: <name>` for plugin intents
+- Per-plugin load time tracked in `$global:ProfileTimings`
+- Tab completion on all plugin management functions
+- `Plugins/_Example.ps1` — reference template demonstrating all plugin conventions
+
+Plugin variable contract:
+
+| Variable | Required | Merges Into |
+|----------|----------|-------------|
+| `$PluginIntents` | Yes | `$global:IntentAliases` |
+| `$PluginMetadata` | Recommended | `$global:IntentMetadata` |
+| `$PluginCategories` | Optional | `$global:CategoryDefinitions` |
+| `$PluginWorkflows` | Optional | `$global:Workflows` |
+| `$PluginInfo` | Optional | `$global:LoadedPlugins` |
+
+#### Toast Notifications (`ToastNotifications.ps1`)
+- Provider auto-detection: BurntToast (if installed) → Windows Runtime API → silent no-op
+- `Send-BildsyPSToast` — `Title`, `Message`, `Type` (Success/Error/Warning/Info); emoji per type
+- `Send-SuccessToast`, `Send-ErrorToast`, `Send-InfoToast` — convenience wrappers
+- `Install-BurntToast` — installs module, sets provider, sends confirmation toast
+- Hook points: after `Invoke-IntentAction` (document/git/workflow/filesystem intents), after `Invoke-Workflow`, after `Save-Chat`
+- All hooks guard with `Get-Command Send-BildsyPSToast -ErrorAction SilentlyContinue`
+
+---
+
+## [1.1.4] - 2026-02-18
+
+### Added
+
+#### Folder Awareness (`FolderContext.ps1`)
+- `Get-FolderContext` — compact, token-budget-aware directory snapshot (default 800-token cap):
+  - Current path, git repo detection, branch, modified files (`git status --short`)
+  - Directories with child counts; files grouped by extension with sizes
+  - Notable files called out explicitly (README, Dockerfile, package.json, etc.)
+  - Optional file content previews for small config/doc files
+- `Invoke-FolderContextUpdate` — injects context into active chat session; re-injecting replaces previous snapshot (uses `[FOLDER_CONTEXT]` sentinel with `.StartsWith()` detection)
+- `Enable-FolderAwareness` / `Disable-FolderAwareness` — wraps `Set-Location` to auto-refresh on `cd` when a session is active
+- Chat commands: `folder`, `folder <path>`, `folder --preview`
+- `chat -FolderAware` / `chat -f` flag
+
+#### Token Budget Management
+- `$global:ModelContextLimits` — per-model context window table (Claude: 200K, GPT-4o: 128K, Llama: 8K, etc.)
+- `Get-ModelContextLimit` — fuzzy matching + safe fallback
+- `Get-TrimmedMessages` upgraded: takes `ContextLimit` and `MaxResponseTokens` separately; `-Summarize` flag compresses evicted messages into a recap (`[Earlier in this conversation (N messages trimmed), you discussed: ...]`)
+- `$MaxTokens` renamed to `$MaxResponseTokens` — correctly controls only API response length
+- `budget` command — detailed breakdown: context window, response reserve, input budget, current usage %, message count, per-role breakdown
+- Auto-trim at 80% with `-AutoTrim` flag
+
+### Fixed
+- `MaxTokens` conflated context window with response length — renamed and separated
+- `Get-TrimmedMessages` silently dropped evicted messages — now summarizes them
+- Nested `Add-Line` function used `$script:` scope — replaced with `$tryAdd` scriptblock closing over enclosing `List[string]`
+- Sentinel `-like '[FOLDER_CONTEXT]*'` never matched — PowerShell `-like` treats `[` as wildcard class; fixed with `.StartsWith()`
+- Re-injecting folder context accumulated duplicate snapshots — now removes both sentinel message and assistant ack
+
+---
+
+## [1.1.3] - 2026-02-18
+
+### Added
+
+#### Conversation Persistence (`ChatSession.ps1`)
+- **Auto-save** on session exit and `clear` — no more lost conversations
+- **Named sessions** with auto-generated slugs from first user message
+- **`index.json`** session index for fast lookup without scanning files
+- Chat commands: `save`, `save <name>`, `resume`, `resume <name>`, `sessions`, `rename <name>`, `delete <name>`, `export`, `export <name>`, `search <keyword>`
+- `chat -Resume` / `-r` — auto-loads last session on startup
+- `chat -Continue` / `-c` — loads last session + injects `Get-SessionSummary` preamble so model recalls context
+- `Get-SessionSummary` — fast local heuristic (no LLM call) compressing session into bullet points
+- Two-pass search: index previews first, then deep file content scan
+- `Export-ChatSession` — exports session to formatted `.md` file
+- 30-day auto-prune on save
+- Backward-compatible `Import-Chat` handles both old array format and new envelope format
+
+---
+
+## [1.1.2] - 2026-02-18
+
+### Added
+
+#### Task Scheduler Integration
+- `schedule_workflow` intent — schedules any defined workflow via Windows Task Scheduler
+- Supported schedule types: `daily`, `weekly`, `interval`, `startup`, `logon`
+- Interval formats: `1h`, `30m`, `15s` (human-friendly, parsed explicitly)
+- Self-contained bootstrap scripts generated per workflow in `ScheduledScripts/` — dot-sources required modules using absolute paths; runs `pwsh -File` (no `EncodedCommand`, no profile dependency)
+- Task Scheduler location: `\BildsyPS\Workflow_<workflow>`
+- Error log: `$env:TEMP\bildsyps_task_errors.log`
+- `list_scheduled_workflows` and `remove_scheduled_workflow` intents
+- Dynamic bootstrap loader in `IntentAliasSystem.ps1`
+
+### Fixed
+- **`-Force` not bypassing `Read-Host` in `Invoke-IntentAction`** — safety block checked `-Force` but execution fell through to a second `Read-Host` at line ~2056 with no `-Force` guard. Both gates now check `-not $AutoConfirm -and -not $Force`. This would have caused any automated caller (scheduled tasks, scripts, tests) to hang.
+
+#### Rename: PSAigent → BildsyPS
+- `README.md` — `# PSAigent` → `# BildsyPS`; updated tagline, topics, git clone URLs, chat commands
+- `CONTRIBUTING.md` — updated project name
+- `IntentAliasSystem.ps1` — startup message updated to `"BildsyPS loaded."`
+- `chat-ollama`, `chat-anthropic`, `chat-local`, `chat-llm` renamed to proper `Verb-Noun` form; original short names preserved as `Set-Alias` entries
+
+---
+
+## [1.1.1] - 2026-02-18
+
+### Added
+
+#### Repo Housekeeping
+- `.gitignore` additions: `*.backup`, `*.old`, `.claude/`, `Modules/Microsoft.PowerShell.ThreadJob/`
+- Untracked from git: `Microsoft.PowerShell_profile.ps1.backup`, `.ps1.old`, `.claude/worktrees/`, `Modules/Microsoft.PowerShell.ThreadJob/`
+
+#### Documentation
+- `VISION.md` created — product direction, five-layer roadmap, design principles, competitive positioning
+- `README.md` overhauled — product-first opening pitch, full feature bullets, intent table, quick start, file structure, roadmap table (✅/🔜), link to VISION.md
 
 ---
 

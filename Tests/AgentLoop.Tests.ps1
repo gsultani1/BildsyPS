@@ -138,22 +138,21 @@ Describe 'AgentLoop — Live' -Tag 'Live' {
 
     Context 'Multi-Step Task' {
         BeforeAll {
-            $script:HasProvider = $false
-            if ($global:ChatProviders -and $global:DefaultChatProvider) {
-                $cfg = $global:ChatProviders[$global:DefaultChatProvider]
-                if ($cfg) { $script:HasProvider = $true }
-            }
+            $script:LiveProvider = Find-ReachableProvider
+            $script:HasProvider = [bool]$script:LiveProvider
         }
 
-        It 'Completes a calculator task with Success' -Skip:(-not $script:HasProvider) {
-            $result = Invoke-AgentTask -Task 'What is 25 * 48 plus 100? Use the calculator tool.' -AutoConfirm -MaxSteps 5
+        It 'Completes a calculator task with Success' {
+            if (-not $script:HasProvider) { Set-ItResult -Skipped -Because 'No reachable LLM provider'; return }
+            $result = Invoke-AgentTask -Task 'What is 25 * 48 plus 100? Use the calculator tool.' -Provider $script:LiveProvider -AutoConfirm -MaxSteps 5
             $result | Should -Not -BeNullOrEmpty
             $result.Success | Should -BeTrue
             $result.Summary | Should -Match '1300'
             $result.StepCount | Should -BeGreaterOrEqual 1
         }
 
-        It 'Result object has expected structure' -Skip:(-not $script:HasProvider) {
+        It 'Result object has expected structure' {
+            if (-not $script:HasProvider) { Set-ItResult -Skipped -Because 'No reachable LLM provider'; return }
             $result = $global:AgentLastResult
             $result.Keys | Should -Contain 'Success'
             $result.Keys | Should -Contain 'Summary'
@@ -163,12 +162,14 @@ Describe 'AgentLoop — Live' -Tag 'Live' {
             $result.Keys | Should -Contain 'Memory'
         }
 
-        It 'Show-AgentSteps renders after a completed run' -Skip:(-not $script:HasProvider) {
+        It 'Show-AgentSteps renders after a completed run' {
+            if (-not $script:HasProvider) { Set-ItResult -Skipped -Because 'No reachable LLM provider'; return }
             { Show-AgentSteps } | Should -Not -Throw
         }
 
-        It 'Multi-tool task uses datetime and store' -Skip:(-not $script:HasProvider) {
-            $result = Invoke-AgentTask -Task 'Get the current date and time using the datetime tool, then store the result in memory with key "current_time"' -AutoConfirm -MaxSteps 5
+        It 'Multi-tool task uses datetime and store' {
+            if (-not $script:HasProvider) { Set-ItResult -Skipped -Because 'No reachable LLM provider'; return }
+            $result = Invoke-AgentTask -Task 'Get the current date and time using the datetime tool, then store the result in memory with key "current_time"' -Provider $script:LiveProvider -AutoConfirm -MaxSteps 5
             $result.Success | Should -BeTrue
             $result.Memory.Keys | Should -Contain 'current_time'
         }

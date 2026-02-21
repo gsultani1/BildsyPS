@@ -336,7 +336,7 @@ try {
         $action = New-ScheduledTaskAction -Execute $pwshPath -Argument "-WindowStyle Hidden -NonInteractive -File `"$scriptPath`""
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 
-        Register-ScheduledTask -TaskName 'Heartbeat' -TaskPath '\BildsyPS' `
+        Register-ScheduledTask -TaskName 'Heartbeat' -TaskPath '\BildsyPS\' `
             -Trigger $trigger -Action $action -Settings $settings `
             -Description "BildsyPS agent heartbeat (every ${IntervalMinutes}m)" `
             -Force | Out-Null
@@ -357,7 +357,7 @@ function Unregister-AgentHeartbeat {
     Remove the heartbeat scheduled task.
     #>
     try {
-        Unregister-ScheduledTask -TaskName 'Heartbeat' -TaskPath '\BildsyPS' -Confirm:$false -ErrorAction Stop
+        Unregister-ScheduledTask -TaskName 'Heartbeat' -TaskPath '\BildsyPS\' -Confirm:$false -ErrorAction Stop
         Write-Host "[Heartbeat] Unregistered scheduled task." -ForegroundColor Green
 
         # Clean up bootstrap script

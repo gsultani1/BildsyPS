@@ -94,6 +94,15 @@ function Import-ChatConfig {
                     }
                 }
             }
+
+            # Apply defaults from config
+            if ($global:ChatConfig.defaults) {
+                $d = $global:ChatConfig.defaults
+                if ($d.provider -and $global:ChatProviders.Contains($d.provider)) {
+                    $global:DefaultChatProvider = $d.provider
+                }
+            }
+
             return $true
         }
         catch {

@@ -14,6 +14,8 @@ $global:AgentLastResult = $null
 $global:AgentLastPlan = $null
 $global:AgentPromptCache = $null       # Cached static portion (tools + intents + protocol)
 $global:AgentPromptCacheHash = $null   # Hash to detect when tools/intents change
+$global:AgentDepth = 0                 # Current recursion depth (0 = top-level, max 2)
+$global:AgentMaxDepth = 2              # Maximum spawn depth allowed
 
 function Get-AgentSystemPrompt {
     <#
@@ -110,6 +112,9 @@ RULES:
 6. Use ASK when you genuinely need user input to proceed.
 7. Use DONE when complete with a clear summary.
 8. Do not repeat the same failed action.
+9. Use spawn_agent to delegate independent sub-tasks. Sub-agents run autonomously and return results.
+   - For parallel work: {"tool":"spawn_agent","tasks":"[{\"task\":\"research X\"},{\"task\":\"research Y\"}]","parallel":"true"}
+   - For sequential: {"tool":"spawn_agent","task":"do something specific"}
 "@
         [void]$static.AppendLine($protocol)
 
@@ -311,26 +316,66 @@ function Invoke-AgentTask {
 
         [switch]$Interactive,
 
-        [hashtable]$Memory = $null
+        [hashtable]$Memory = $null,
+
+        [switch]$Silent,
+
+        [hashtable]$ParentMemory = $null
     )
 
-    # Default ShowThoughts to true
-    if (-not $PSBoundParameters.ContainsKey('ShowThoughts')) { $ShowThoughts = $true }
+    # Default ShowThoughts to true unless Silent
+    if (-not $PSBoundParameters.ContainsKey('ShowThoughts')) { $ShowThoughts = -not $Silent }
+
+    # Silent-aware output helper — suppresses Write-Host in sub-agents
+    $writeAgent = {
+        param([string]$Message, [string]$ForegroundColor = 'White', [switch]$NoNewline)
+        if (-not $Silent) {
+            if ($NoNewline) { Write-Host $Message -ForegroundColor $ForegroundColor -NoNewline }
+            else { Write-Host $Message -ForegroundColor $ForegroundColor }
+        }
+    }
+
+    # Depth guard — prevent runaway recursion
+    if ($global:AgentDepth -ge $global:AgentMaxDepth) {
+        return @{
+            Success     = $false
+            Summary     = "Spawn depth limit reached ($global:AgentMaxDepth). Cannot create deeper sub-agents."
+            AbortReason = "DepthLimit"
+            Steps       = @()
+            StepCount   = 0
+            TotalTime   = 0
+            TokensUsed  = 0
+            Messages    = @()
+            Memory      = @{}
+        }
+    }
+
+    # Increment depth — MUST decrement in finally block (semaphore pattern)
+    $global:AgentDepth++
+    $savedMemory = if ($global:AgentMemory) { $global:AgentMemory.Clone() } else { @{} }
+
+    try {
 
     # Reset state
     $global:AgentAbort = $false
     $global:AgentLastPlan = $null
-    if ($Memory) {
+    if ($ParentMemory) {
+        # Shared memory from parent agent (depth 0→1)
+        $global:AgentMemory = $ParentMemory
+    }
+    elseif ($Memory) {
         $global:AgentMemory = $Memory.Clone()
     }
-    else {
+    elseif ($global:AgentDepth -eq 1) {
+        # Top-level agent: fresh memory
         $global:AgentMemory = @{}
     }
+    # else: sub-agent gets whatever was passed or isolated copy
 
     # Resolve provider and model
     $providerConfig = $global:ChatProviders[$Provider]
     if (-not $providerConfig) {
-        Write-Host "[Agent] Unknown provider: $Provider" -ForegroundColor Red
+        & $writeAgent "[Agent] Unknown provider: $Provider" -ForegroundColor Red
         return @{ Success = $false; AbortReason = "UnknownProvider" }
     }
     if (-not $Model) { $Model = $providerConfig.DefaultModel }
@@ -339,20 +384,21 @@ function Invoke-AgentTask {
     if ($providerConfig.ApiKeyRequired) {
         $apiKey = Get-ChatApiKey $Provider
         if (-not $apiKey) {
-            Write-Host "[Agent] API key required for $($providerConfig.Name)." -ForegroundColor Red
+            & $writeAgent "[Agent] API key required for $($providerConfig.Name)." -ForegroundColor Red
             return @{ Success = $false; AbortReason = "NoApiKey" }
         }
     }
 
     # Display task header
+    $depthLabel = if ($global:AgentDepth -gt 1) { " (depth $($global:AgentDepth))" } else { "" }
     $modeLabel = if ($Interactive) { "Interactive Agent" } else { "Agent Task" }
-    Write-Host "`n===== $modeLabel =====" -ForegroundColor Cyan
-    Write-Host "  Task: $Task" -ForegroundColor White
-    Write-Host "  Provider: $($providerConfig.Name) | Model: $Model" -ForegroundColor Gray
-    Write-Host "  Max steps: $MaxSteps | Tools: $($global:AgentTools.Count) | Ctrl+C to abort" -ForegroundColor Gray
-    if ($Interactive) { Write-Host "  Interactive: type follow-up tasks or 'done' to exit" -ForegroundColor Gray }
-    Write-Host "======================" -ForegroundColor Cyan
-    Write-Host ""
+    & $writeAgent "`n===== ${modeLabel}${depthLabel} =====" -ForegroundColor Cyan
+    & $writeAgent "  Task: $Task" -ForegroundColor White
+    & $writeAgent "  Provider: $($providerConfig.Name) | Model: $Model" -ForegroundColor Gray
+    & $writeAgent "  Max steps: $MaxSteps | Tools: $($global:AgentTools.Count) | Ctrl+C to abort" -ForegroundColor Gray
+    if ($Interactive) { & $writeAgent "  Interactive: type follow-up tasks or 'done' to exit" -ForegroundColor Gray }
+    & $writeAgent "======================" -ForegroundColor Cyan
+    & $writeAgent ""
 
     # Outer loop for interactive mode
     $continueInteractive = $true
@@ -396,7 +442,7 @@ function Invoke-AgentTask {
             $totalChars = ($agentMessages | ForEach-Object { $_.content.Length } | Measure-Object -Sum).Sum
             $estimatedTokens = [math]::Ceiling($totalChars / 4)
             if ($estimatedTokens -gt $global:AgentMaxTokenBudget) {
-                Write-Host "[Agent] Token budget exceeded (~$estimatedTokens tokens). Stopping." -ForegroundColor Yellow
+                & $writeAgent "[Agent] Token budget exceeded (~$estimatedTokens tokens). Stopping." -ForegroundColor Yellow
                 $abortReason = "TokenBudget"
                 break
             }
@@ -405,14 +451,14 @@ function Invoke-AgentTask {
             if (Get-Command Test-RateLimit -ErrorAction SilentlyContinue) {
                 $rateCheck = Test-RateLimit
                 if (-not $rateCheck.Allowed) {
-                    Write-Host "[Agent] Rate limited: $($rateCheck.Message)" -ForegroundColor Yellow
+                    & $writeAgent "[Agent] Rate limited: $($rateCheck.Message)" -ForegroundColor Yellow
                     $abortReason = "RateLimit"
                     break
                 }
             }
 
             # Call LLM
-            Write-Host "[Step $stepNumber/$MaxSteps] Thinking..." -ForegroundColor DarkCyan
+            & $writeAgent "[Step $stepNumber/$MaxSteps] Thinking..." -ForegroundColor DarkCyan
             try {
                 $response = Invoke-ChatCompletion `
                     -Messages $agentMessages `
@@ -423,7 +469,7 @@ function Invoke-AgentTask {
                     -SystemPrompt $systemPrompt
             }
             catch {
-                Write-Host "[Agent] LLM call failed: $($_.Exception.Message)" -ForegroundColor Red
+                & $writeAgent "[Agent] LLM call failed: $($_.Exception.Message)" -ForegroundColor Red
                 $abortReason = "LLMError"
                 break
             }
@@ -484,23 +530,23 @@ function Invoke-AgentTask {
             if ($planLines.Count -gt 0) {
                 $planText = $planLines -join "`n"
                 $global:AgentLastPlan = $planText
-                Write-Host "  Plan:" -ForegroundColor Magenta
+                & $writeAgent "  Plan:" -ForegroundColor Magenta
                 foreach ($pl in $planLines) {
-                    Write-Host "    $pl" -ForegroundColor DarkMagenta
+                    & $writeAgent "    $pl" -ForegroundColor DarkMagenta
                 }
             }
 
             # Display thought
             if ($thought -and $ShowThoughts) {
-                Write-Host "  Thought: $thought" -ForegroundColor DarkGray
+                & $writeAgent "  Thought: $thought" -ForegroundColor DarkGray
             }
 
             # Handle DONE
             if ($doneText) {
                 $done = $true
                 $finalSummary = $doneText
-                Write-Host "`n[Agent] Task Complete" -ForegroundColor Green
-                Write-Host "  $doneText" -ForegroundColor White
+                & $writeAgent "`n[Agent] Task Complete" -ForegroundColor Green
+                & $writeAgent "  $doneText" -ForegroundColor White
                 break
             }
 
@@ -509,15 +555,22 @@ function Invoke-AgentTask {
                 $done = $true
                 $finalSummary = "STUCK: $stuckText"
                 $abortReason = "Stuck"
-                Write-Host "`n[Agent] Stuck -- needs user input" -ForegroundColor Yellow
-                Write-Host "  $stuckText" -ForegroundColor White
+                & $writeAgent "`n[Agent] Stuck -- needs user input" -ForegroundColor Yellow
+                & $writeAgent "  $stuckText" -ForegroundColor White
                 break
             }
 
-            # Handle ASK -- pause for user input
+            # Handle ASK -- pause for user input (skip in Silent/sub-agent mode)
             if ($askText) {
-                Write-Host "`n[Agent] Question:" -ForegroundColor Magenta
-                Write-Host "  $askText" -ForegroundColor White
+                if ($Silent) {
+                    # Sub-agents cannot ask questions — treat as stuck
+                    $done = $true
+                    $finalSummary = "STUCK (sub-agent cannot ask): $askText"
+                    $abortReason = "Stuck"
+                    break
+                }
+                & $writeAgent "`n[Agent] Question:" -ForegroundColor Magenta
+                & $writeAgent "  $askText" -ForegroundColor White
                 Write-Host -NoNewline "  Answer> " -ForegroundColor Yellow
                 $userAnswer = Read-Host
                 if ($userAnswer -in @('abort', 'cancel', 'stop')) {
@@ -538,7 +591,7 @@ function Invoke-AgentTask {
                     $actionJson = $action | ConvertFrom-Json
                 }
                 catch {
-                    Write-Host "  [Agent] Failed to parse action JSON: $action" -ForegroundColor Red
+                    & $writeAgent "  [Agent] Failed to parse action JSON: $action" -ForegroundColor Red
                     $observation = "OBSERVATION [step $stepNumber/$MaxSteps]:`n  Error: Could not parse JSON. Use {`"tool`":`"name`",...} or {`"intent`":`"name`",...}"
                     $agentMessages += @{ role = "user"; content = $observation }
                     continue
@@ -564,7 +617,7 @@ function Invoke-AgentTask {
                     }
                 }
                 else {
-                    Write-Host "  [Agent] JSON must contain 'tool' or 'intent' key" -ForegroundColor Red
+                    & $writeAgent "  [Agent] JSON must contain 'tool' or 'intent' key" -ForegroundColor Red
                     $observation = "OBSERVATION [step $stepNumber/$MaxSteps]:`n  Error: JSON must have a 'tool' or 'intent' key."
                     $agentMessages += @{ role = "user"; content = $observation }
                     continue
@@ -572,17 +625,17 @@ function Invoke-AgentTask {
 
                 # Display action
                 $typeIcon = if ($actionType -eq 'tool') { "T" } else { "I" }
-                Write-Host "  [$typeIcon] $actionName" -ForegroundColor Yellow -NoNewline
+                & $writeAgent "  [$typeIcon] $actionName" -ForegroundColor Yellow -NoNewline
                 if ($actionParams.Count -gt 0) {
                     $paramDisplay = ($actionParams.GetEnumerator() | ForEach-Object {
                         $v = "$($_.Value)"
                         if ($v.Length -gt 40) { $v = $v.Substring(0, 40) + "..." }
                         "$($_.Key)=$v"
                     }) -join ", "
-                    Write-Host " ($paramDisplay)" -ForegroundColor DarkYellow
+                    & $writeAgent " ($paramDisplay)" -ForegroundColor DarkYellow
                 }
                 else {
-                    Write-Host "" # newline
+                    & $writeAgent "" # newline
                 }
 
                 # Execute
@@ -628,7 +681,7 @@ function Invoke-AgentTask {
                     $o = "$($actionResult.Output)" -replace "`n", " "
                     if ($o.Length -gt 80) { $o.Substring(0, 80) + "..." } else { $o }
                 } else { "(no output)" }
-                Write-Host "  $statusIcon $outputPreview" -ForegroundColor $statusColor
+                & $writeAgent "  $statusIcon $outputPreview" -ForegroundColor $statusColor
 
                 # Record step
                 $stepRecord = @{
@@ -654,7 +707,7 @@ function Invoke-AgentTask {
                 $agentMessages += @{ role = "user"; content = $observation }
             }
             elseif (-not $doneText -and -not $stuckText -and -not $askText) {
-                Write-Host "  [Agent] No action detected. Nudging..." -ForegroundColor DarkYellow
+                & $writeAgent "  [Agent] No action detected. Nudging..." -ForegroundColor DarkYellow
                 $agentMessages += @{ role = "user"; content = "Respond with ACTION: {JSON}, DONE: result, ASK: question, or STUCK: reason." }
             }
         }
@@ -662,13 +715,13 @@ function Invoke-AgentTask {
         # Handle max steps reached
         if ($stepNumber -ge $MaxSteps -and -not $done) {
             $abortReason = "MaxSteps"
-            Write-Host "`n[Agent] Reached max steps ($MaxSteps). Stopping." -ForegroundColor Yellow
+            & $writeAgent "`n[Agent] Reached max steps ($MaxSteps). Stopping." -ForegroundColor Yellow
         }
 
         # Handle user abort
         if ($global:AgentAbort -and -not $done) {
             $abortReason = "UserAbort"
-            Write-Host "`n[Agent] Aborted by user." -ForegroundColor Yellow
+            & $writeAgent "`n[Agent] Aborted by user." -ForegroundColor Yellow
         }
 
         # Accumulate results
@@ -679,32 +732,32 @@ function Invoke-AgentTask {
         $taskTokensEst = [math]::Ceiling(($agentMessages | ForEach-Object { $_.content.Length } | Measure-Object -Sum).Sum / 4)
 
         # Summary
-        Write-Host "`n===== Agent Summary =====" -ForegroundColor Cyan
-        Write-Host "  Steps: $stepNumber | Time: $([math]::Round($taskTime, 1))s | ~$taskTokensEst tokens" -ForegroundColor Gray
+        & $writeAgent "`n===== Agent Summary =====" -ForegroundColor Cyan
+        & $writeAgent "  Steps: $stepNumber | Time: $([math]::Round($taskTime, 1))s | ~$taskTokensEst tokens" -ForegroundColor Gray
         $successes = @($stepResults | Where-Object { $_.Success }).Count
         $failures = @($stepResults | Where-Object { -not $_.Success }).Count
         if ($stepResults.Count -gt 0) {
-            Write-Host "  Results: $successes succeeded, $failures failed" -ForegroundColor $(if ($failures -eq 0) { 'Green' } else { 'Yellow' })
+            & $writeAgent "  Results: $successes succeeded, $failures failed" -ForegroundColor $(if ($failures -eq 0) { 'Green' } else { 'Yellow' })
         }
         if ($global:AgentMemory.Count -gt 0) {
-            Write-Host "  Memory: $($global:AgentMemory.Keys -join ', ')" -ForegroundColor DarkCyan
+            & $writeAgent "  Memory: $($global:AgentMemory.Keys -join ', ')" -ForegroundColor DarkCyan
         }
         if ($abortReason) {
-            Write-Host "  Stopped: $abortReason" -ForegroundColor Yellow
+            & $writeAgent "  Stopped: $abortReason" -ForegroundColor Yellow
         }
-        Write-Host "=========================" -ForegroundColor Cyan
+        & $writeAgent "=========================" -ForegroundColor Cyan
 
-        # Toast notification
-        if (Get-Command Send-ShелixToast -ErrorAction SilentlyContinue) {
+        # Toast notification (only for top-level agents)
+        if (-not $Silent -and (Get-Command Send-BildsyPSToast -ErrorAction SilentlyContinue)) {
             $toastMsg = if ($finalSummary) {
                 $s = $finalSummary; if ($s.Length -gt 80) { $s.Substring(0, 80) + '...' } else { $s }
             } else { "Agent finished ($stepNumber steps)" }
             $toastType = if ($done -and -not $abortReason) { 'Success' } else { 'Warning' }
-            Send-ShелixToast -Title "Agent task complete" -Message $toastMsg -Type $toastType
+            Send-BildsyPSToast -Title "Agent task complete" -Message $toastMsg -Type $toastType
         }
 
-        # Interactive mode: prompt for follow-up
-        if ($Interactive -and -not $global:AgentAbort) {
+        # Interactive mode: prompt for follow-up (disabled in Silent mode)
+        if ($Interactive -and -not $Silent -and -not $global:AgentAbort) {
             Write-Host ""
             Write-Host -NoNewline "Agent> " -ForegroundColor Magenta
             $followUp = Read-Host
@@ -726,7 +779,7 @@ function Invoke-AgentTask {
     $overallTime = ((Get-Date) - $overallStart).TotalSeconds
     $overallTokensEst = [math]::Ceiling(($allMessages | ForEach-Object { $_.content.Length } | Measure-Object -Sum).Sum / 4)
 
-    # Store result globally
+    # Store result globally (only for top-level agents)
     $result = @{
         Success     = ($done -and -not $abortReason)
         Summary     = if ($finalSummary) { $finalSummary } else { "Agent stopped after $totalSteps steps ($abortReason)" }
@@ -738,9 +791,25 @@ function Invoke-AgentTask {
         Messages    = $allMessages
         Memory      = $global:AgentMemory.Clone()
     }
-    $global:AgentLastResult = $result
+    if (-not $Silent) { $global:AgentLastResult = $result }
 
     return $result
+
+    } # end try
+    finally {
+        # Semaphore release — always decrement depth, even on exception
+        $global:AgentDepth = [math]::Max(0, $global:AgentDepth - 1)
+
+        # Restore parent memory if this was a sub-agent with isolated memory
+        if ($global:AgentDepth -eq 0) {
+            # Top-level agent done — memory stays as-is for inspection
+        }
+        elseif (-not $ParentMemory) {
+            # This was an isolated sub-agent — restore saved memory
+            $global:AgentMemory = $savedMemory
+        }
+        # If ParentMemory was passed, memory is shared — no restore needed
+    }
 }
 
 # ===== Aliases =====

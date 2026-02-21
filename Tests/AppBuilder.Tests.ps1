@@ -67,24 +67,24 @@ Describe 'AppBuilder — Offline' {
     # ── TOKEN BUDGET ────────────────────────────────────────
     Context 'Token Budget (Get-BuildMaxTokens)' {
 
-        It 'PowerShell lane caps at 16000' {
+        It 'Returns known output limit for gpt-4o' {
             Get-BuildMaxTokens -Framework 'powershell' -Model 'gpt-4o' |
-                Should -BeLessOrEqual 16000
+                Should -Be 16384
         }
 
-        It 'PowerShell lane floors at 4096' {
-            Get-BuildMaxTokens -Framework 'powershell' -Model 'llama3' |
-                Should -BeGreaterOrEqual 4096
+        It 'Returns known output limit for claude-sonnet-4-6' {
+            Get-BuildMaxTokens -Framework 'powershell' -Model 'claude-sonnet-4-6' |
+                Should -Be 8192
         }
 
-        It 'Python-web lane floors at 8192' {
+        It 'Returns default 8192 for unknown models' {
             Get-BuildMaxTokens -Framework 'python-web' -Model 'llama3' |
-                Should -BeGreaterOrEqual 8192
+                Should -Be 8192
         }
 
-        It 'Python-tk lane returns a positive value' {
-            Get-BuildMaxTokens -Framework 'python-tk' -Model 'gpt-4o' |
-                Should -BeGreaterThan 0
+        It 'Fuzzy matches model names containing known keys' {
+            Get-BuildMaxTokens -Framework 'python-tk' -Model 'gpt-4o-2024-05-13' |
+                Should -Be 16384
         }
 
         It 'Override returns the exact value requested' {
@@ -92,20 +92,19 @@ Describe 'AppBuilder — Offline' {
                 Should -Be 32000
         }
 
-        It 'Zero override falls back to auto-detection' {
-            $result = Get-BuildMaxTokens -Framework 'powershell' -Model 'gpt-4o' -Override 0
-            $result | Should -BeGreaterThan 0
-            $result | Should -BeLessOrEqual 16000
+        It 'Zero override falls back to model lookup' {
+            Get-BuildMaxTokens -Framework 'powershell' -Model 'gpt-4o' -Override 0 |
+                Should -Be 16384
         }
 
-        It 'Negative override falls back to auto-detection' {
-            $result = Get-BuildMaxTokens -Framework 'powershell' -Model 'gpt-4o' -Override -1
-            $result | Should -BeGreaterThan 0
+        It 'Negative override falls back to model lookup' {
+            Get-BuildMaxTokens -Framework 'powershell' -Model 'gpt-4o' -Override -1 |
+                Should -Be 16384
         }
 
-        It 'Unknown model still returns a usable budget' {
+        It 'Unknown model returns safe default' {
             Get-BuildMaxTokens -Framework 'powershell' -Model 'some-future-model' |
-                Should -BeGreaterThan 0
+                Should -Be 8192
         }
     }
 
@@ -407,31 +406,41 @@ $form = New-Object System.Windows.Forms.Form
         }
     }
 
+    # ── BUILD FAILURE HANDLING (offline — no LLM needed) ────
+    Context 'Build Failure Handling' {
+
+        It 'Returns failure result for an empty prompt without throwing' {
+            $result = New-AppBuild -Prompt '' -Framework 'powershell' -Name 'test-empty-prompt'
+            $result.Success | Should -BeFalse
+            $result.Output | Should -Match 'empty'
+        }
+
+        It 'Returns failure result for a whitespace-only prompt without throwing' {
+            $result = New-AppBuild -Prompt '   ' -Framework 'powershell' -Name 'test-ws-prompt'
+            $result.Success | Should -BeFalse
+        }
+
+        AfterAll {
+            Remove-AppBuild -Name 'test-empty-prompt' -ErrorAction SilentlyContinue
+            Remove-AppBuild -Name 'test-ws-prompt' -ErrorAction SilentlyContinue
+        }
+    }
+
     # ── NAME SANITIZATION ───────────────────────────────────
     Context 'Build Name Sanitization' {
 
         It 'Strips invalid filesystem characters from build names' {
-            # If you have a Get-SafeBuildName or similar helper
-            if (-not (Get-Command Get-SafeBuildName -ErrorAction SilentlyContinue)) {
-                Set-ItResult -Skipped -Because 'Get-SafeBuildName not exported'
-            }
             $result = Get-SafeBuildName -Name 'my<app>:v2'
             $result | Should -Not -Match '[<>:"/\\|?*]'
             $result | Should -Not -BeNullOrEmpty
         }
 
         It 'Trims leading and trailing whitespace' {
-            if (-not (Get-Command Get-SafeBuildName -ErrorAction SilentlyContinue)) {
-                Set-ItResult -Skipped -Because 'Get-SafeBuildName not exported'
-            }
             $result = Get-SafeBuildName -Name '  spaced-app  '
             $result | Should -Be 'spaced-app'
         }
 
         It 'Handles empty name without throwing' {
-            if (-not (Get-Command Get-SafeBuildName -ErrorAction SilentlyContinue)) {
-                Set-ItResult -Skipped -Because 'Get-SafeBuildName not exported'
-            }
             { Get-SafeBuildName -Name '' } | Should -Not -Throw
         }
     }
@@ -440,11 +449,8 @@ $form = New-Object System.Windows.Forms.Form
 Describe 'AppBuilder — Live' -Tag 'Live' {
 
     BeforeAll {
-        $script:HasProvider = $false
-        if ($global:ChatProviders -and $global:DefaultChatProvider) {
-            $cfg = $global:ChatProviders[$global:DefaultChatProvider]
-            if ($cfg) { $script:HasProvider = $true }
-        }
+        $script:LiveProvider = Find-ReachableProvider
+        $script:HasProvider = [bool]$script:LiveProvider
         $script:HasPs2exe = $null -ne (Get-Command Invoke-ps2exe -ErrorAction SilentlyContinue) -or
                             $null -ne (Get-Module -ListAvailable -Name ps2exe)
         $script:CanBuild = $script:HasProvider -and $script:HasPs2exe
@@ -452,9 +458,10 @@ Describe 'AppBuilder — Live' -Tag 'Live' {
 
     Context 'PowerShell Full Build Pipeline' {
 
-        It 'New-AppBuild generates a .exe from a simple prompt' -Skip:(-not $script:CanBuild) {
+        It 'New-AppBuild generates a .exe from a simple prompt' {
+            if (-not $script:CanBuild) { Set-ItResult -Skipped -Because 'No LLM provider or ps2exe available'; return }
             $script:PsResult = New-AppBuild -Prompt 'a simple counter app with plus and minus buttons' `
-                -Framework 'powershell' -Name 'test-ps-counter'
+                -Framework 'powershell' -Name 'test-ps-counter' -Provider $script:LiveProvider
             $script:PsResult.Success   | Should -BeTrue
             $script:PsResult.ExePath   | Should -Not -BeNullOrEmpty
             Test-Path $script:PsResult.ExePath | Should -BeTrue
@@ -462,14 +469,16 @@ Describe 'AppBuilder — Live' -Tag 'Live' {
             $script:PsResult.AppName   | Should -Be 'test-ps-counter'
         }
 
-        It 'Source contains BildsyPS branding' -Skip:(-not $script:CanBuild) {
+        It 'Source contains BildsyPS branding' {
+            if (-not $script:CanBuild) { Set-ItResult -Skipped -Because 'No LLM provider or ps2exe available'; return }
             $src = Join-Path $global:AppBuilderPath 'test-ps-counter\source\app.ps1'
             if (Test-Path $src) {
                 Get-Content $src -Raw | Should -Match 'Built with BildsyPS'
             }
         }
 
-        It 'Source passes code validation' -Skip:(-not $script:CanBuild) {
+        It 'Source passes code validation' {
+            if (-not $script:CanBuild) { Set-ItResult -Skipped -Because 'No LLM provider or ps2exe available'; return }
             $src = Join-Path $global:AppBuilderPath 'test-ps-counter\source\app.ps1'
             if (Test-Path $src) {
                 $code  = Get-Content $src -Raw
@@ -479,7 +488,8 @@ Describe 'AppBuilder — Live' -Tag 'Live' {
             }
         }
 
-        It 'Build record exists in SQLite with completed status' -Skip:(-not $script:CanBuild) {
+        It 'Build record exists in SQLite with completed status' {
+            if (-not $script:CanBuild) { Set-ItResult -Skipped -Because 'No LLM provider or ps2exe available'; return }
             if (-not $global:ChatDbReady) { Set-ItResult -Skipped -Because 'SQLite not available' }
             $conn = Get-ChatDbConnection
             $cmd  = $conn.CreateCommand()
@@ -488,7 +498,8 @@ Describe 'AppBuilder — Live' -Tag 'Live' {
             $cmd.Dispose(); $conn.Close(); $conn.Dispose()
         }
 
-        It 'Output directory structure is correct' -Skip:(-not $script:CanBuild) {
+        It 'Output directory structure is correct' {
+            if (-not $script:CanBuild) { Set-ItResult -Skipped -Because 'No LLM provider or ps2exe available'; return }
             $base = Join-Path $global:AppBuilderPath 'test-ps-counter'
             Test-Path $base                         | Should -BeTrue
             Test-Path (Join-Path $base 'source')    | Should -BeTrue
@@ -508,16 +519,18 @@ Describe 'AppBuilder — Live' -Tag 'Live' {
             $script:CanBuildPy = $script:HasProvider -and $script:HasPyInstaller
         }
 
-        It 'New-AppBuild generates an .exe from a python-tk prompt' -Skip:(-not $script:CanBuildPy) {
+        It 'New-AppBuild generates an .exe from a python-tk prompt' {
+            if (-not $script:CanBuildPy) { Set-ItResult -Skipped -Because 'No LLM provider or pyinstaller available'; return }
             $script:PyResult = New-AppBuild -Prompt 'a tkinter color picker tool' `
-                -Framework 'python-tk' -Name 'test-py-color'
+                -Framework 'python-tk' -Name 'test-py-color' -Provider $script:LiveProvider
             $script:PyResult.Success   | Should -BeTrue
             $script:PyResult.ExePath   | Should -Not -BeNullOrEmpty
             Test-Path $script:PyResult.ExePath | Should -BeTrue
             $script:PyResult.Framework | Should -Be 'python-tk'
         }
 
-        It 'Source contains BildsyPS branding' -Skip:(-not $script:CanBuildPy) {
+        It 'Source contains BildsyPS branding' {
+            if (-not $script:CanBuildPy) { Set-ItResult -Skipped -Because 'No LLM provider or pyinstaller available'; return }
             $src = Join-Path $global:AppBuilderPath 'test-py-color\source\app.py'
             if (Test-Path $src) {
                 Get-Content $src -Raw | Should -Match 'Built with BildsyPS'
@@ -533,9 +546,10 @@ Describe 'AppBuilder — Live' -Tag 'Live' {
 
     Context 'NoBranding Live Build' {
 
-        It 'Build with -NoBranding omits BildsyPS branding from source' -Skip:(-not $script:CanBuild) {
+        It 'Build with -NoBranding omits BildsyPS branding from source' {
+            if (-not $script:CanBuild) { Set-ItResult -Skipped -Because 'No LLM provider or ps2exe available'; return }
             $result = New-AppBuild -Prompt 'a hello world window' `
-                -Framework 'powershell' -Name 'test-nobrand' -NoBranding
+                -Framework 'powershell' -Name 'test-nobrand' -NoBranding -Provider $script:LiveProvider
             $result.Success | Should -BeTrue
             $src = Join-Path $global:AppBuilderPath 'test-nobrand\source\app.ps1'
             if (Test-Path $src) {
@@ -550,15 +564,4 @@ Describe 'AppBuilder — Live' -Tag 'Live' {
         }
     }
 
-    Context 'Build Failure Handling' {
-
-        It 'Returns failure result for an impossible prompt without throwing' -Skip:(-not $script:HasProvider) {
-            $result = New-AppBuild -Prompt '' -Framework 'powershell' -Name 'test-empty-prompt'
-            $result.Success | Should -BeFalse
-        }
-
-        AfterAll {
-            Remove-AppBuild -Name 'test-empty-prompt' -ErrorAction SilentlyContinue
-        }
-    }
 }

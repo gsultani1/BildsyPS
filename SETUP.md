@@ -1,4 +1,5 @@
 # BildsyPS Setup Guide
+> **v1.3.1** — 313 tests, 0 failures
 
 ## Quick Start
 
@@ -307,6 +308,45 @@ zsh-help          # Zsh/Oh-My-Zsh to PowerShell guide
 
 ---
 
+## Tab Completion
+
+All public functions have dynamic argument completers. Press **Tab** after any parameter to get live suggestions:
+
+```powershell
+Resume-Chat -Name <tab>              # lists saved sessions from SQLite
+Remove-ChatSession -Name <tab>       # lists saved sessions
+Export-ChatSession -Name <tab>       # lists saved sessions
+
+Set-DefaultChatProvider -Provider <tab>   # lists configured providers
+chat -Provider <tab>                      # lists configured providers
+
+Invoke-UserSkill -Name <tab>         # lists loaded skills
+Remove-UserSkill -Name <tab>         # lists loaded skills
+
+Invoke-Workflow -Name <tab>          # lists workflows (tooltip = description)
+
+Connect-MCPServer -Name <tab>        # lists registered MCP servers
+Disconnect-MCPServer -Name <tab>     # lists connected MCP servers
+Invoke-MCPTool -ServerName <tab>     # lists connected MCP servers
+
+Remove-AppBuild -Name <tab>          # lists builds from filesystem
+Update-AppBuild -Name <tab>          # lists builds from filesystem
+New-AppBuild -Framework <tab>        # powershell / python-tk / python-web
+
+Remove-AgentTask -Id <tab>           # lists heartbeat task IDs
+Enable-AgentTask -Id <tab>           # lists heartbeat task IDs
+Disable-AgentTask -Id <tab>          # lists heartbeat task IDs
+
+Remove-PersistentAlias -Name <tab>   # lists aliases from UserAliases.ps1
+Remove-Artifact -Name <tab>          # lists files in Artifacts/
+
+gco -Branch <tab>                    # lists git branches
+gmerge -Branch <tab>                 # lists git branches
+grb -Branch <tab>                    # lists git branches
+```
+
+---
+
 ## Quick Reference
 
 ```powershell
@@ -383,3 +423,7 @@ The cmdlet 'chat-ollama' uses an unapproved verb.
 **These are intentional.** PowerShell prefers formal `Verb-Noun` naming (like `Get-Process`), but these are convenience aliases designed for quick daily use, not formal cmdlets. They work correctly and can be safely ignored.
 
 Affected functions: `chat-ollama`, `chat-anthropic`, `chat-local`, `chat-llm`, `profile-edit`, `pwd-full`, `pwd-short`
+
+### `gm` renamed to `gmerge`
+
+The `gm` git merge shortcut was renamed to `gmerge` because `gm` is a built-in PowerShell alias for `Get-Member`. The old name would silently shadow the built-in and prevent tab completion from working. Use `gmerge <branch>` going forward.
