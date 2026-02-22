@@ -206,6 +206,48 @@ $form.Text = Get-Greeting -Name 'World'
             }
         }
 
+        Context 'PowerShell — PS7+ Operator Compatibility' {
+            It 'Flags ?? null-coalescing operator' {
+                $files = New-FileMap @{ 'app.ps1' = '$x = $a ?? "default"' }
+                $result = Test-GeneratedCode -Files $files -Framework 'powershell'
+                $result.Success | Should -BeFalse
+                ($result.Errors -join "`n") | Should -Match 'null-coalescing operator'
+            }
+
+            It 'Flags ?. null-conditional operator' {
+                $files = New-FileMap @{ 'app.ps1' = '$val = $obj?.Property' }
+                $result = Test-GeneratedCode -Files $files -Framework 'powershell'
+                $result.Success | Should -BeFalse
+                ($result.Errors -join "`n") | Should -Match 'null-conditional operator'
+            }
+
+            It 'Flags ?[] null-conditional index operator' {
+                $files = New-FileMap @{ 'app.ps1' = '$val = $arr?[0]' }
+                $result = Test-GeneratedCode -Files $files -Framework 'powershell'
+                $result.Success | Should -BeFalse
+                ($result.Errors -join "`n") | Should -Match 'null-conditional index'
+            }
+
+            It 'Does NOT flag ?? in Python code' {
+                $files = New-FileMap @{ 'app.py' = 'x = a if a is not None else "default"  # not ?? but harmless' }
+                $result = Test-GeneratedCode -Files $files -Framework 'python-tk'
+                $result.Success | Should -BeTrue
+            }
+
+            It 'Does NOT flag ? in ternary or help contexts' {
+                $files = New-FileMap @{ 'app.ps1' = 'Get-Help Get-Process -?' }
+                $result = Test-GeneratedCode -Files $files -Framework 'powershell'
+                ($result.Errors -join "`n") | Should -Not -Match 'null-coalescing'
+            }
+
+            It 'Accepts PS 5.1 compatible null-check pattern' {
+                $code = 'if ($null -ne $x) { $x } else { "default" }'
+                $files = New-FileMap @{ 'app.ps1' = $code }
+                $result = Test-GeneratedCode -Files $files -Framework 'powershell'
+                $result.Success | Should -BeTrue
+            }
+        }
+
         Context 'Tauri — Rust Validation' {
             It 'Accepts valid Rust code' {
                 $files = New-FileMap @{ 'src-tauri/src/main.rs' = 'fn main() { tauri::Builder::default().run(tauri::generate_context!()).expect("error"); }' }
