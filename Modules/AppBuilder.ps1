@@ -49,6 +49,10 @@ RULES:
 9. Add proper form disposal and cleanup.
 10. The script must work when compiled to .exe via ps2exe.
 11. Start with: Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+12. NEVER hardcode or generate placeholder API keys, tokens, passwords, or secrets in the code.
+    If the app needs API credentials, create a Settings dialog where the user can enter their own
+    key at runtime. Persist settings to the app's JSON config file (see rule 8). Mask the key
+    in the UI with PasswordChar='*'.
 
 Output ONLY the code block. No explanations before or after.
 '@
@@ -73,6 +77,10 @@ RULES:
    Path.home() / f'.{app_name}' / 'data.json'
 9. Use if __name__ == '__main__': guard.
 10. Use ttk widgets where possible for native look.
+11. NEVER hardcode or generate placeholder API keys, tokens, passwords, or secrets in the code.
+    If the app needs API credentials, create a Settings window where the user can enter their own
+    key at runtime. Persist settings to the app's JSON config file (see rule 8). Mask the key
+    in the UI with show='*'.
 
 Also output a requirements.txt file (empty or "# stdlib only"):
 ```text requirements.txt
@@ -103,6 +111,10 @@ RULES:
    Path.home() / f'.{app_name}' / 'data.json'
 7. Use if __name__ == '__main__': guard in app.py.
 8. requirements.txt must contain: pywebview
+9. NEVER hardcode or generate placeholder API keys, tokens, passwords, or secrets in the code.
+   If the app needs API credentials, create a Settings panel in the HTML UI where the user can
+   enter their own key at runtime. Persist settings via the Python js_api to the app's JSON
+   config file (see rule 6). Use <input type="password"> for key fields.
 
 Output ONLY the code blocks. No explanations before or after.
 '@
