@@ -257,6 +257,12 @@ RULES:
    - "build": { "frontendDist": "../web" }  — NO devPath or distDir (those are Tauri v1).
    - Do NOT include devUrl unless you are using a live dev server.
    - Do NOT include an "allowlist" object (that is Tauri v1). Use "app": { "security": { "csp": null } } if needed.
+   - Do NOT put a "permissions" key in tauri.conf.json. Tauri v2 uses a capabilities system instead.
+   CRITICAL: Generate src-tauri/capabilities/default.json for plugin permissions:
+   ```json src-tauri/capabilities/default.json
+   { "identifier": "default", "description": "default permissions", "windows": ["main"], "permissions": ["core:default", ...plugin permissions...] }
+   For each tauri-plugin-X in Cargo.toml dependencies, add "X:default" to the permissions array.
+   Example: tauri-plugin-dialog → "dialog:default", tauri-plugin-fs → "fs:default", tauri-plugin-shell → "shell:default".
 5. src-tauri/build.rs: standard tauri_build::build() call.
 6. Frontend in web/: plain HTML5, vanilla ES6+ JS, CSS. No frameworks, no bundler, no npm.
 {THEME_RULE}
@@ -1209,6 +1215,17 @@ function Test-GeneratedCode {
             if ($tomlContent -notmatch 'tauri\s*=') {
                 $errors.Add("[Tauri] Cargo.toml missing tauri dependency")
             }
+            # Tauri v2: permissions belong in capabilities/default.json, NOT in tauri.conf.json
+            $confFile = $Files.Keys | Where-Object { $_ -match 'tauri\.conf\.json$' } | Select-Object -First 1
+            if ($confFile) {
+                try {
+                    $confObj = $Files[$confFile] | ConvertFrom-Json
+                    if ($confObj.PSObject.Properties['permissions']) {
+                        $errors.Add("[$confFile] Tauri v2: top-level 'permissions' key is invalid in tauri.conf.json. Permissions belong in src-tauri/capabilities/default.json")
+                    }
+                }
+                catch { }
+            }
             # Check that main.rs exists in generated files
             $hasMain = $rsFiles | Where-Object { $_ -match 'main\.rs$' }
             if (-not $hasMain) {
@@ -1898,6 +1915,169 @@ function Build-PythonExecutable {
     }
 }
 
+function Repair-TauriSource {
+    <#
+    .SYNOPSIS
+    Post-generation mechanical fixes for common LLM Rust/Tauri code errors.
+    Runs on .rs source files before cargo build. Returns count of repairs made.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$SourceDir
+    )
+
+    $tauriDir = Join-Path $SourceDir 'src-tauri'
+    $srcDir   = Join-Path $tauriDir 'src'
+    if (-not (Test-Path $srcDir)) { return 0 }
+
+    $repairCount = 0
+    $rsFiles = Get-ChildItem $srcDir -Filter '*.rs' -Recurse -File
+
+    foreach ($rsFile in $rsFiles) {
+        $content = Get-Content $rsFile.FullName -Raw -Encoding UTF8
+        $original = $content
+
+        # ── Fix 1: Ensure `use tauri::Emitter;` if .emit( is used ──
+        if ($content -match '\.emit\(' -and $content -notmatch 'use\s+tauri::Emitter\s*;') {
+            $content = $content -replace '(use\s+tauri::\w+;)', "`$1`nuse tauri::Emitter;"
+            if ($content -eq $original) {
+                # No existing tauri use — add at top
+                $content = "use tauri::Emitter;`n$content"
+            }
+        }
+
+        # ── Fix 1b: Ensure `use tauri::Manager;` if .get_window( or .get_webview_window( is used ──
+        if ($content -match '\.(get_window|get_webview_window|windows)\(' -and $content -notmatch 'use\s+tauri::Manager\s*;') {
+            $content = $content -replace '(use\s+tauri::\w+;)', "`$1`nuse tauri::Manager;"
+            if ($content -eq $original) {
+                $content = "use tauri::Manager;`n$content"
+            }
+        }
+
+        # ── Fix 2: Add type annotation to query_map row closures ──
+        # Matches: query_map(..., |row| {  →  query_map(..., |row: &rusqlite::Row| {
+        $content = $content -replace 'query_map\(([^)]*),\s*\|row\|\s*\{', 'query_map($1, |row: &rusqlite::Row| {'
+
+        # Also handle: .query_row(..., |row| {  →  .query_row(..., |row: &rusqlite::Row| {
+        $content = $content -replace 'query_row\(([^)]*),\s*\|row\|\s*\{', 'query_row($1, |row: &rusqlite::Row| {'
+
+        # ── Fix 3: query_map lifetime pattern inside blocks ──
+        # Pattern: stmt.query_map(...).map_err(...)?.filter_map(...).collect()
+        # at block end — needs intermediate let binding.
+        # Replace: stmt.query_map(ARGS).map_err(E)?\n        .filter_map(F).collect()
+        # With:    let rows = stmt.query_map(ARGS).map_err(E)?;\n        rows.filter_map(F).collect()
+        $content = [regex]::Replace($content,
+            '(?m)([ \t]*)(\bstmt\.query_map\([^;]+?)\.map_err\(([^)]+)\)\?\s*\n(\s*)\.filter_map\(([^)]+)\)\.collect\(\)',
+            '${1}let rows = ${2}.map_err(${3})?;' + "`n" + '${4}rows.filter_map(${5}).collect()')
+
+        # ── Fix 4: Remove unused imports ──
+        # For each `use X::Y;` line, check if Y (the last segment) appears elsewhere in the file
+        # Whitelist trait imports that are used via method dispatch, not by name
+        $traitImportWhitelist = @('Emitter', 'Manager')
+        $lines = $content -split "`n"
+        $cleanedLines = @()
+        foreach ($line in $lines) {
+            if ($line -match '^\s*use\s+[\w:]+::(\w+)\s*;' -and $line -notmatch '#\[') {
+                $symbol = $Matches[1]
+                if ($symbol -in $traitImportWhitelist) { $cleanedLines += $line; continue }
+                $rest = ($content -replace [regex]::Escape($line), '')
+                if ($rest -notmatch [regex]::Escape($symbol)) {
+                    $repairCount++
+                    Write-Host "[Repair-TauriSource] Stripped unused import: $($line.Trim()) in $($rsFile.Name)" -ForegroundColor DarkGray
+                    continue
+                }
+            }
+            $cleanedLines += $line
+        }
+        $content = $cleanedLines -join "`n"
+
+        # ── Fix 5: Dedup main.rs when lib.rs + commands/ exist ──
+        if ($rsFile.Name -eq 'main.rs') {
+            $libRs = Join-Path $srcDir 'lib.rs'
+            $cmdDir = Join-Path $srcDir 'commands'
+            if ((Test-Path $libRs) -and (Test-Path $cmdDir)) {
+                # If main.rs has #[tauri::command] functions but no fn main, or has duplicate commands
+                # that already exist in commands/, regenerate main.rs as a thin entry point
+                $hasFnMain = $content -match 'fn\s+main\s*\('
+                $hasCommandDefs = $content -match '#\[tauri::command\]'
+
+                if ($hasCommandDefs -and (-not $hasFnMain -or ($content -match 'E0255|reimported'))) {
+                    # Extract the lib crate name from Cargo.toml
+                    $cargoPath = Join-Path $tauriDir 'Cargo.toml'
+                    $libCrateName = 'crate'
+                    if (Test-Path $cargoPath) {
+                        $cargoText = Get-Content $cargoPath -Raw -Encoding UTF8
+                        if ($cargoText -match '\[lib\]\s*\nname\s*=\s*"([\w_]+)"') {
+                            $libCrateName = $Matches[1]
+                        }
+                    }
+
+                    # Collect all pub command functions from commands/ .rs files
+                    $commandFns = @()
+                    $commandMods = @()
+                    Get-ChildItem $cmdDir -Filter '*.rs' -File | Where-Object { $_.Name -ne 'mod.rs' } | ForEach-Object {
+                        $modName = $_.BaseName
+                        $commandMods += $modName
+                        $modContent = Get-Content $_.FullName -Raw -Encoding UTF8
+                        $fnMatches = [regex]::Matches($modContent, '(?m)#\[tauri::command\]\s*\npub\s+(?:async\s+)?fn\s+(\w+)')
+                        foreach ($fm in $fnMatches) {
+                            $commandFns += "${libCrateName}::commands::${modName}::$($fm.Groups[1].Value)"
+                        }
+                    }
+
+                    # Detect plugins from Cargo.toml
+                    $pluginInits = @()
+                    if (Test-Path $cargoPath) {
+                        $cargoText = Get-Content $cargoPath -Raw -Encoding UTF8
+                        $pluginMatches = [regex]::Matches($cargoText, 'tauri-plugin-(\w[\w-]*)')
+                        foreach ($pm in $pluginMatches) {
+                            $pn = $pm.Groups[1].Value -replace '-', '_'
+                            $pluginInits += "            .plugin(tauri_plugin_${pn}::init())"
+                        }
+                    }
+
+                    $invokeHandlers = if ($commandFns.Count -gt 0) {
+                        "            .invoke_handler(tauri::generate_handler![`n                $($commandFns -join ",`n                ")`n            ])"
+                    } else { '' }
+
+                    $pluginBlock = $pluginInits -join "`n"
+
+                    $newMain = @"
+// Auto-repaired by Repair-TauriSource: thin entry point delegating to lib crate
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+fn main() {
+    tauri::Builder::default()
+$pluginBlock
+$invokeHandlers
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+"@
+                    $content = $newMain
+                    $repairCount++
+                    Write-Host "[Repair-TauriSource] Regenerated main.rs as thin entry point ($($commandFns.Count) commands)" -ForegroundColor Yellow
+                }
+                elseif (-not $hasFnMain) {
+                    # Has no main and no commands — just needs fn main added
+                    $content += "`n`nfn main() {`n    tauri::Builder::default()`n        .run(tauri::generate_context!())`n        .expect(`"error while running tauri application`");`n}`n"
+                    $repairCount++
+                    Write-Host "[Repair-TauriSource] Added missing fn main() to main.rs" -ForegroundColor Yellow
+                }
+            }
+        }
+
+        if ($content -ne $original) {
+            Set-Content $rsFile.FullName $content -Encoding UTF8 -NoNewline
+            $repairCount++
+        }
+    }
+
+    if ($repairCount -gt 0) {
+        Write-Host "[Repair-TauriSource] Applied $repairCount repair(s) to Rust source" -ForegroundColor Cyan
+    }
+    return $repairCount
+}
+
 function Build-TauriExecutable {
     <#
     .SYNOPSIS
@@ -2052,6 +2232,47 @@ function Build-TauriExecutable {
         if (-not (Test-Path $buildRsPath)) {
             Set-Content $buildRsPath "fn main() { tauri_build::build() }" -Encoding UTF8
             Write-Host "[AppBuilder] Scaffolded missing build.rs" -ForegroundColor DarkGray
+        }
+
+        # Ensure capabilities/default.json exists with permissions derived from Cargo.toml plugins
+        $capDir = Join-Path $tauriDir 'capabilities'
+        $capFile = Join-Path $capDir 'default.json'
+        if (-not (Test-Path $capFile)) {
+            if (-not (Test-Path $capDir)) { New-Item -ItemType Directory -Path $capDir -Force | Out-Null }
+            # Derive plugin permissions from Cargo.toml tauri-plugin-* dependencies
+            $capPerms = @('core:default')
+            $cargoForCaps = Join-Path $tauriDir 'Cargo.toml'
+            if (Test-Path $cargoForCaps) {
+                $cargoText = Get-Content $cargoForCaps -Raw -Encoding UTF8
+                $pluginMatches = [regex]::Matches($cargoText, 'tauri-plugin-(\w[\w-]*)')
+                foreach ($pm in $pluginMatches) {
+                    $pluginName = $pm.Groups[1].Value
+                    $permEntry = "$($pluginName):default"
+                    if ($permEntry -notin $capPerms) { $capPerms += $permEntry }
+                }
+            }
+            $capObj = @{
+                identifier  = 'default'
+                description = 'default permissions'
+                windows     = @('main')
+                permissions = $capPerms
+            }
+            $capObj | ConvertTo-Json -Depth 5 | Set-Content $capFile -Encoding UTF8
+            Write-Host "[AppBuilder] Scaffolded capabilities/default.json (permissions: $($capPerms -join ', '))" -ForegroundColor DarkGray
+        }
+
+        # Strip invalid top-level 'permissions' key from tauri.conf.json if present
+        $confPathForPerms = Join-Path $tauriDir 'tauri.conf.json'
+        if (Test-Path $confPathForPerms) {
+            try {
+                $confForPerms = Get-Content $confPathForPerms -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($confForPerms.PSObject.Properties['permissions']) {
+                    $confForPerms.PSObject.Properties.Remove('permissions')
+                    $confForPerms | ConvertTo-Json -Depth 10 | Set-Content $confPathForPerms -Encoding UTF8
+                    Write-Host "[AppBuilder] Removed invalid 'permissions' key from tauri.conf.json (belongs in capabilities/)" -ForegroundColor Yellow
+                }
+            }
+            catch { }
         }
 
         # Patch Cargo.toml: ensure tauri has required features for production builds
@@ -3009,6 +3230,11 @@ function New-AppBuild {
     }
     Write-Host "[AppBuilder] Source written to $sourceDir" -ForegroundColor DarkGray
 
+    # Step 5b: Mechanical Rust source repairs (Tauri only)
+    if ($framework -eq 'tauri') {
+        Repair-TauriSource -SourceDir $sourceDir
+    }
+
     # Step 6: Build
     $outputDir = Join-Path $global:AppBuilderPath $Name
     $buildResult = switch ($framework) {
@@ -3279,6 +3505,11 @@ function Update-AppBuild {
             Write-Host "[AppBuilder] Modified code has errors:" -ForegroundColor Red
             foreach ($err in $validation.Errors) { Write-Host "  $err" -ForegroundColor Yellow }
             return @{ Success = $false; Output = "Validation failed after modification"; Errors = $validation.Errors }
+        }
+
+        # Mechanical Rust source repairs before rebuild (Tauri only)
+        if ($framework -eq 'tauri') {
+            Repair-TauriSource -SourceDir $sourceDir
         }
 
         # Rebuild

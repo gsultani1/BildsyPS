@@ -1756,6 +1756,53 @@ fn main() {}
         }
     }
 
+    # ── TAURI V2 PERMISSIONS VALIDATION ──────────────────────
+    Context 'Tauri v2 permissions in tauri.conf.json' {
+
+        It 'Flags top-level permissions key in tauri.conf.json' {
+            $toml = @"
+[package]
+name = "test-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tauri = "2"
+"@
+            $confJson = '{ "identifier": "com.bildsyps.test", "productName": "Test", "version": "0.1.0", "build": { "frontendDist": "../web" }, "permissions": ["core:default", "dialog:default"] }'
+            $mainRs = "fn main() { tauri::Builder::default().run(tauri::generate_context!()).unwrap(); }"
+            $files = New-FileMap @{
+                'src-tauri/Cargo.toml' = $toml
+                'src-tauri/tauri.conf.json' = $confJson
+                'src-tauri/src/main.rs' = $mainRs
+            }
+            $result = Test-GeneratedCode -Files $files -Framework 'tauri'
+            $result.Success | Should -BeFalse
+            ($result.Errors -join "`n") | Should -Match "permissions.*capabilities"
+        }
+
+        It 'Passes when tauri.conf.json has no permissions key' {
+            $toml = @"
+[package]
+name = "test-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tauri = "2"
+"@
+            $confJson = '{ "identifier": "com.bildsyps.test", "productName": "Test", "version": "0.1.0", "build": { "frontendDist": "../web" } }'
+            $mainRs = "fn main() { tauri::Builder::default().run(tauri::generate_context!()).unwrap(); }"
+            $files = New-FileMap @{
+                'src-tauri/Cargo.toml' = $toml
+                'src-tauri/tauri.conf.json' = $confJson
+                'src-tauri/src/main.rs' = $mainRs
+            }
+            $result = Test-GeneratedCode -Files $files -Framework 'tauri'
+            ($result.Errors -join "`n") | Should -Not -Match "permissions"
+        }
+    }
+
     # ── SUBPROCESS SHELL=TRUE VARIANTS ───────────────────────
     Context 'Subprocess shell=True — all variants' {
 
@@ -1963,6 +2010,218 @@ Describe 'AppBuilder — Live' -Tag 'Live' {
             if ($script:CanBuildTauri) {
                 Remove-AppBuild -Name 'test-tauri-counter' -ErrorAction SilentlyContinue
             }
+        }
+    }
+
+    # ── REPAIR-TAURISOURCE ─────────────────────────────────
+    Context 'Repair-TauriSource — mechanical Rust fixes' {
+
+        BeforeAll {
+            $script:repairRoot = Join-Path $TestDrive 'repair-tauri-test'
+        }
+
+        AfterEach {
+            if (Test-Path $script:repairRoot) { Remove-Item $script:repairRoot -Recurse -Force }
+        }
+
+        It 'Injects use tauri::Emitter when .emit( is used' {
+            $srcDir = Join-Path $script:repairRoot 'src-tauri' 'src'
+            New-Item -ItemType Directory -Path $srcDir -Force | Out-Null
+            $rs = @"
+use tauri::State;
+
+fn do_stuff(app: tauri::AppHandle) {
+    app.emit("event", "payload").unwrap();
+}
+"@
+            Set-Content (Join-Path $srcDir 'main.rs') $rs -Encoding UTF8
+            Repair-TauriSource -SourceDir $script:repairRoot
+            $result = Get-Content (Join-Path $srcDir 'main.rs') -Raw -Encoding UTF8
+            $result | Should -Match 'use tauri::Emitter;'
+        }
+
+        It 'Does not duplicate Emitter import if already present' {
+            $srcDir = Join-Path $script:repairRoot 'src-tauri' 'src'
+            New-Item -ItemType Directory -Path $srcDir -Force | Out-Null
+            $rs = @"
+use tauri::Emitter;
+use tauri::State;
+
+fn do_stuff(app: tauri::AppHandle) {
+    app.emit("event", "payload").unwrap();
+}
+"@
+            Set-Content (Join-Path $srcDir 'main.rs') $rs -Encoding UTF8
+            Repair-TauriSource -SourceDir $script:repairRoot
+            $result = Get-Content (Join-Path $srcDir 'main.rs') -Raw -Encoding UTF8
+            $count = ([regex]::Matches($result, 'use tauri::Emitter;')).Count
+            $count | Should -Be 1
+        }
+
+        It 'Injects use tauri::Manager when .get_webview_window( is used' {
+            $srcDir = Join-Path $script:repairRoot 'src-tauri' 'src'
+            New-Item -ItemType Directory -Path $srcDir -Force | Out-Null
+            $rs = @"
+use tauri::State;
+
+fn setup(app: &tauri::App) {
+    let win = app.get_webview_window("main").unwrap();
+}
+"@
+            Set-Content (Join-Path $srcDir 'main.rs') $rs -Encoding UTF8
+            Repair-TauriSource -SourceDir $script:repairRoot
+            $result = Get-Content (Join-Path $srcDir 'main.rs') -Raw -Encoding UTF8
+            $result | Should -Match 'use tauri::Manager;'
+        }
+
+        It 'Adds type annotation to query_map row closures' {
+            $srcDir = Join-Path $script:repairRoot 'src-tauri' 'src'
+            New-Item -ItemType Directory -Path $srcDir -Force | Out-Null
+            $rs = @"
+use rusqlite::params;
+
+fn query() {
+    stmt.query_map(params![id], |row| {
+        Ok(Item { id: row.get(0)? })
+    })
+}
+"@
+            Set-Content (Join-Path $srcDir 'items.rs') $rs -Encoding UTF8
+            Repair-TauriSource -SourceDir $script:repairRoot
+            $result = Get-Content (Join-Path $srcDir 'items.rs') -Raw -Encoding UTF8
+            $result | Should -Match '\|row: &rusqlite::Row\|'
+            $result | Should -Not -Match 'query_map\([^)]*,\s*\|row\|\s*\{'
+        }
+
+        It 'Adds type annotation to query_row row closures' {
+            $srcDir = Join-Path $script:repairRoot 'src-tauri' 'src'
+            New-Item -ItemType Directory -Path $srcDir -Force | Out-Null
+            $rs = @"
+fn fetch() {
+    conn.query_row("SELECT id FROM items WHERE id = ?1", params![id], |row| {
+        Ok(Item { id: row.get(0)? })
+    })
+}
+"@
+            Set-Content (Join-Path $srcDir 'db.rs') $rs -Encoding UTF8
+            Repair-TauriSource -SourceDir $script:repairRoot
+            $result = Get-Content (Join-Path $srcDir 'db.rs') -Raw -Encoding UTF8
+            $result | Should -Match 'query_row\([^)]*,\s*\|row: &rusqlite::Row\|'
+        }
+
+        It 'Strips unused imports' {
+            $srcDir = Join-Path $script:repairRoot 'src-tauri' 'src'
+            New-Item -ItemType Directory -Path $srcDir -Force | Out-Null
+            $rs = @"
+use rusqlite::params;
+use std::path::PathBuf;
+
+fn main() {
+    println!("hello");
+}
+"@
+            Set-Content (Join-Path $srcDir 'main.rs') $rs -Encoding UTF8
+            Repair-TauriSource -SourceDir $script:repairRoot
+            $result = Get-Content (Join-Path $srcDir 'main.rs') -Raw -Encoding UTF8
+            $result | Should -Not -Match 'use rusqlite::params;'
+            $result | Should -Not -Match 'use std::path::PathBuf;'
+        }
+
+        It 'Does not strip imports that are used' {
+            $srcDir = Join-Path $script:repairRoot 'src-tauri' 'src'
+            New-Item -ItemType Directory -Path $srcDir -Force | Out-Null
+            $rs = @"
+use rusqlite::params;
+
+fn insert(conn: &Connection) {
+    conn.execute("INSERT INTO t VALUES (?1)", params![42]).unwrap();
+}
+"@
+            Set-Content (Join-Path $srcDir 'db.rs') $rs -Encoding UTF8
+            Repair-TauriSource -SourceDir $script:repairRoot
+            $result = Get-Content (Join-Path $srcDir 'db.rs') -Raw -Encoding UTF8
+            $result | Should -Match 'use rusqlite::params;'
+        }
+
+        It 'Regenerates main.rs when lib.rs + commands/ exist and main.rs has duplicate commands' {
+            $srcDir = Join-Path $script:repairRoot 'src-tauri' 'src'
+            $cmdDir = Join-Path $srcDir 'commands'
+            New-Item -ItemType Directory -Path $cmdDir -Force | Out-Null
+
+            # Cargo.toml with lib name
+            $cargoDir = Join-Path $script:repairRoot 'src-tauri'
+            Set-Content (Join-Path $cargoDir 'Cargo.toml') @"
+[package]
+name = "test-app"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "test_app_lib"
+path = "src/lib.rs"
+
+[dependencies]
+tauri = { version = "2", features = ["devtools"] }
+tauri-plugin-dialog = "2"
+"@ -Encoding UTF8
+
+            # lib.rs
+            Set-Content (Join-Path $srcDir 'lib.rs') "pub mod commands;`npub mod db;`n" -Encoding UTF8
+
+            # commands/mod.rs
+            Set-Content (Join-Path $cmdDir 'mod.rs') "pub mod items;`n" -Encoding UTF8
+
+            # commands/items.rs with a tauri command
+            Set-Content (Join-Path $cmdDir 'items.rs') @"
+use tauri::State;
+
+#[tauri::command]
+pub async fn get_items(state: State<'_, DbPool>) -> Result<Vec<Item>, AppError> {
+    Ok(vec![])
+}
+
+#[tauri::command]
+pub async fn add_item(state: State<'_, DbPool>) -> Result<Item, AppError> {
+    Ok(Item::default())
+}
+"@ -Encoding UTF8
+
+            # main.rs with duplicate command definitions and no fn main
+            Set-Content (Join-Path $srcDir 'main.rs') @"
+use crate::db::get_pool;
+use crate::error::AppError;
+
+#[tauri::command]
+pub fn get_items() -> Vec<String> { vec![] }
+
+#[tauri::command]
+pub fn add_item() -> String { String::new() }
+"@ -Encoding UTF8
+
+            Repair-TauriSource -SourceDir $script:repairRoot
+            $result = Get-Content (Join-Path $srcDir 'main.rs') -Raw -Encoding UTF8
+
+            # Should have fn main
+            $result | Should -Match 'fn main\(\)'
+            # Should reference lib crate commands
+            $result | Should -Match 'test_app_lib::commands::items::get_items'
+            $result | Should -Match 'test_app_lib::commands::items::add_item'
+            # Should have plugin init
+            $result | Should -Match 'tauri_plugin_dialog::init\(\)'
+            # Should NOT have #[tauri::command] definitions
+            $result | Should -Not -Match '#\[tauri::command\]'
+        }
+
+        It 'Adds fn main when main.rs exists but has no main function and no commands' {
+            $srcDir = Join-Path $script:repairRoot 'src-tauri' 'src'
+            $cmdDir = Join-Path $srcDir 'commands'
+            New-Item -ItemType Directory -Path $cmdDir -Force | Out-Null
+            Set-Content (Join-Path $srcDir 'lib.rs') "pub mod commands;`n" -Encoding UTF8
+            Set-Content (Join-Path $cmdDir 'mod.rs') "" -Encoding UTF8
+            Set-Content (Join-Path $srcDir 'main.rs') "// just a comment`n" -Encoding UTF8
+            Repair-TauriSource -SourceDir $script:repairRoot
+            $result = Get-Content (Join-Path $srcDir 'main.rs') -Raw -Encoding UTF8
+            $result | Should -Match 'fn main\(\)'
         }
     }
 
