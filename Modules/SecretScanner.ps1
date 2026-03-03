@@ -134,9 +134,9 @@ function Test-StartupSecrets {
     # BildsyPS config directory
     $configDir = "$global:BildsyPSHome\config"
     if (Test-Path $configDir) {
-        Get-ChildItem $configDir -File -ErrorAction SilentlyContinue | ForEach-Object {
-            $filesToScan += $_.FullName
-        }
+        Get-ChildItem $configDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -ne '.example' } |
+            ForEach-Object { $filesToScan += $_.FullName }
     }
 
     # Project root sensitive files (in case old copies still exist)
@@ -147,6 +147,7 @@ function Test-StartupSecrets {
         if (Test-Path $path) { $filesToScan += $path }
     }
 
+    $filesToScan = @($filesToScan | Select-Object -Unique)
     $findings = Invoke-SecretScan -Paths $filesToScan
     return $findings
 }

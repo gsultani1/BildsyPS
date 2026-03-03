@@ -232,7 +232,7 @@ Describe 'Tab Completion — AppBuilder' {
 
     It 'New-AppBuild -Framework completes framework names' {
         $results = Get-TabCompletionResults 'New-AppBuild -Framework '
-        $results.Count | Should -Be 4
+        $results.Count | Should -Be 5
         $results.CompletionText | Should -Contain 'powershell'
         $results.CompletionText | Should -Contain 'python-tk'
         $results.CompletionText | Should -Contain 'python-web'

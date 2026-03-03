@@ -1586,10 +1586,12 @@ function Invoke-BildsyPSBranding {
 # --- BildsyPS Branding ---
 `$bildsyAbout = New-Object System.Windows.Forms.ToolStripMenuItem("About")
 `$bildsyAbout.Add_Click({
-    [System.Windows.Forms.MessageBox]::Show(
-        "Built with BildsyPS — AI-powered shell orchestrator``nhttps://github.com/gsultani/bildsyps",
-        "About", [System.Windows.Forms.MessageBoxButtons]::OK,
-        [System.Windows.Forms.MessageBoxIcon]::Information)
+    try {
+        [void][System.Windows.Forms.MessageBox]::Show(
+            "Built with BildsyPS — AI-powered shell orchestrator``nhttps://github.com/gsultani/bildsyps",
+            "About", [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Information)
+    } catch {}
 })
 if ($formVar.MainMenuStrip) {
     `$bildsyHelp = $formVar.MainMenuStrip.Items | Where-Object { `$_.Text -eq 'Help' }

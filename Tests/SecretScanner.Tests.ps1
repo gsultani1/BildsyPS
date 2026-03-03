@@ -150,6 +150,33 @@ Describe 'SecretScanner — Offline' {
         }
     }
 
+    Context 'Test-StartupSecrets — deduplication and .example exclusion' {
+
+        It 'Does not produce duplicate findings for the same file' {
+            # Scan Config\.env which exists — should get at most 1 finding per matching line
+            $findings = Test-StartupSecrets
+            $envFindings = @($findings | Where-Object { $_.FileName -eq '.env' })
+            $lineGroups = $envFindings | Group-Object -Property Line
+            foreach ($g in $lineGroups) {
+                $g.Count | Should -Be 1 -Because "line $($g.Name) in .env should only appear once (no duplicate scan)"
+            }
+        }
+
+        It 'Excludes .example template files from scanning' {
+            # Create a .example file with a "secret" placeholder
+            $exFile = "$global:BildsyPSHome\config\test-template.example"
+            Set-Content -Path $exFile -Value 'API_KEY=your-placeholder-key-here-1234'
+            try {
+                $findings = Test-StartupSecrets
+                $exFindings = @($findings | Where-Object { $_.FileName -eq 'test-template.example' })
+                $exFindings.Count | Should -Be 0
+            }
+            finally {
+                Remove-Item $exFile -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
     Context 'Show-SecretScanReport' {
         It 'Produces no output for empty findings' {
             { Show-SecretScanReport -Findings @() -GitignoreWarnings @() -Quiet } | Should -Not -Throw
