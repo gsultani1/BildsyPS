@@ -12,9 +12,9 @@ $global:AppBuilderBranding = $true  # inject "Built with BildsyPS" branding
 
 # ── Dangerous pattern definitions (split by language) ──
 $script:DangerousPythonPatterns = @(
-    @{ Pattern = '\beval\s*\(';          Name = 'eval()' }
-    @{ Pattern = '\bexec\s*\(';          Name = 'exec()' }
-    @{ Pattern = '\b__import__\s*\(';    Name = '__import__()' }
+    @{ Pattern = '\beval\s*\('; Name = 'eval()' }
+    @{ Pattern = '\bexec\s*\('; Name = 'exec()' }
+    @{ Pattern = '\b__import__\s*\('; Name = '__import__()' }
     @{ Pattern = '\bpickle\.loads\s*\('; Name = 'pickle.loads()' }
     @{ Pattern = '\bmarshal\.loads\s*\('; Name = 'marshal.loads()' }
     @{ Pattern = 'subprocess\.(Popen|call|run)\s*\(.*shell\s*=\s*True'; Name = 'subprocess shell=True — shell injection risk' }
@@ -22,21 +22,21 @@ $script:DangerousPythonPatterns = @(
 
 # Patterns that produce warnings, not hard errors (legitimate in many apps)
 $script:WarningPythonPatterns = @(
-    @{ Pattern = '\bos\.popen\s*\(';     Name = 'os.popen() — consider subprocess.run() instead' }
-    @{ Pattern = '\bos\.system\s*\(';    Name = 'os.system() — consider subprocess.run() instead' }
-    @{ Pattern = '\bsubprocess\b';       Name = 'subprocess — verify arguments are not user-controlled' }
+    @{ Pattern = '\bos\.popen\s*\('; Name = 'os.popen() — consider subprocess.run() instead' }
+    @{ Pattern = '\bos\.system\s*\('; Name = 'os.system() — consider subprocess.run() instead' }
+    @{ Pattern = '\bsubprocess\b'; Name = 'subprocess — verify arguments are not user-controlled' }
 )
 
 $script:DangerousPowerShellPatterns = @(
     @{ Pattern = '\bInvoke-Expression\b'; Name = 'Invoke-Expression' }
-    @{ Pattern = '\biex\s';              Name = 'iex (Invoke-Expression alias)' }
+    @{ Pattern = '\biex\s'; Name = 'iex (Invoke-Expression alias)' }
     @{ Pattern = 'Remove-Item\b.*-Recurse'; Name = 'Remove-Item -Recurse' }
     @{ Pattern = 'Start-Process\b.*-Verb\s+RunAs'; Name = 'Start-Process -Verb RunAs' }
 )
 
 $script:DangerousJavaScriptPatterns = @(
-    @{ Pattern = '\beval\s*\(';           Name = 'eval()' }
-    @{ Pattern = 'new\s+Function\s*\(';   Name = 'new Function()' }
+    @{ Pattern = '\beval\s*\('; Name = 'eval()' }
+    @{ Pattern = 'new\s+Function\s*\('; Name = 'new Function()' }
     @{ Pattern = '\bdocument\.write\s*\('; Name = 'document.write()' }
     @{ Pattern = '\bsetTimeout\s*\(\s*["'']'; Name = 'setTimeout with string argument' }
     @{ Pattern = '\bsetInterval\s*\(\s*["'']'; Name = 'setInterval with string argument' }
@@ -44,21 +44,21 @@ $script:DangerousJavaScriptPatterns = @(
 
 # ── PS7+ compatibility patterns (applied to .ps1 files only) ──
 $script:PS7CompatPatterns = @(
-    @{ Pattern = '\?\?';  Name = 'null-coalescing operator ?? (PS7+ only, breaks ps2exe)' }
-    @{ Pattern = '\?\.';  Name = 'null-conditional operator ?. (PS7+ only, breaks ps2exe)' }
-    @{ Pattern = '\?\[';  Name = 'null-conditional index ?[] (PS7+ only, breaks ps2exe)' }
+    @{ Pattern = '\?\?'; Name = 'null-coalescing operator ?? (PS7+ only, breaks ps2exe)' }
+    @{ Pattern = '\?\.'; Name = 'null-conditional operator ?. (PS7+ only, breaks ps2exe)' }
+    @{ Pattern = '\?\['; Name = 'null-conditional index ?[] (PS7+ only, breaks ps2exe)' }
 )
 
 # ── Theme presets (per-framework rule text, keyed by theme name) ──
 $script:ThemePresets = @{
-    dark = @{
+    dark   = @{
         powershell   = '6. Dark theme: Background=#1e1e1e, Foreground=#e0e0e0, Accent=#4A90E2, Font=Segoe UI'
         'python-tk'  = '5. Dark theme: bg=#1e1e1e, fg=#e0e0e0, accent=#4A90E2, font=("Segoe UI", 10)'
         'python-web' = '4. Dark theme in CSS: background=#1e1e1e, color=#e0e0e0, accent=#4A90E2, font-family="Segoe UI"'
         tauri        = '7. Dark theme in CSS: background=#1e1e1e, color=#e0e0e0, accent=#4A90E2, font-family="Segoe UI".'
         refine       = '- dark theme (#1e1e1e background, #4A90E2 accent, Segoe UI font)'
     }
-    light = @{
+    light  = @{
         powershell   = '6. Light theme: Background=#f5f5f5, Foreground=#1e1e1e, Accent=#0078d4, Font=Segoe UI'
         'python-tk'  = '5. Light theme: bg=#f5f5f5, fg=#1e1e1e, accent=#0078d4, font=("Segoe UI", 10)'
         'python-web' = '4. Light theme in CSS: background=#f5f5f5, color=#1e1e1e, accent=#0078d4, font-family="Segoe UI"'
@@ -477,17 +477,17 @@ function Invoke-PromptRefinement {
     )
 
     $frameworkLabel = switch ($Framework) {
-        'powershell'        { 'POWERSHELL (Windows Forms GUI, single .ps1 file, ps2exe compatible)' }
+        'powershell' { 'POWERSHELL (Windows Forms GUI, single .ps1 file, ps2exe compatible)' }
         'powershell-module' { 'POWERSHELL_MODULE (installable .psm1 module with .psd1 manifest, verb-noun functions, no GUI)' }
-        'python-tk'         { 'PYTHON_TKINTER (single app.py, stdlib only)' }
-        'python-web'        { 'PYTHON_PYWEBVIEW (app.py + web/index.html + CSS + JS)' }
-        'tauri'             { 'TAURI_V2 (Rust backend + HTML/CSS/JS frontend, native desktop app)' }
+        'python-tk' { 'PYTHON_TKINTER (single app.py, stdlib only)' }
+        'python-web' { 'PYTHON_PYWEBVIEW (app.py + web/index.html + CSS + JS)' }
+        'tauri' { 'TAURI_V2 (Rust backend + HTML/CSS/JS frontend, native desktop app)' }
     }
 
     # Compute feature cap from framework table or override (for auto-prune re-runs)
     $featureCap = if ($FeatureCapOverride -gt 0) { $FeatureCapOverride }
-                  elseif ($script:FrameworkFeatureCaps.ContainsKey($Framework)) { $script:FrameworkFeatureCaps[$Framework] }
-                  else { 15 }
+    elseif ($script:FrameworkFeatureCaps.ContainsKey($Framework)) { $script:FrameworkFeatureCaps[$Framework] }
+    else { 15 }
 
     $themeStyle = $script:ThemePresets[$Theme]['refine']
     $systemPrompt = $script:BuilderRefinePrompt -replace '\{FRAMEWORK_PLACEHOLDER\}', $frameworkLabel
@@ -527,9 +527,9 @@ function Invoke-PromptRefinement {
         if ($spec -match '(?s)DEFERRED:\s*\n(.+?)(?:\n[A-Z_]{3,}:|\z)') {
             $deferredBlock = $Matches[1]
             $deferred = @($deferredBlock -split "`n" | ForEach-Object {
-                $line = $_.Trim() -replace '^-\s*', ''
-                if ($line -and $line.Length -gt 3) { $line }
-            } | Where-Object { $_ })
+                    $line = $_.Trim() -replace '^-\s*', ''
+                    if ($line -and $line.Length -gt 3) { $line }
+                } | Where-Object { $_ })
         }
 
         return @{
@@ -721,8 +721,8 @@ Set PASSED: false only if there are DEFECTS. Scope gaps alone do NOT cause failu
 '@
 
     $codeContext = ($Files.Keys | ForEach-Object {
-        "--- $_ ---`n$($Files[$_])"
-    }) -join "`n`n"
+            "--- $_ ---`n$($Files[$_])"
+        }) -join "`n`n"
 
     $messages = @(
         @{ role = 'user'; content = "Specification:`n$Spec`n`nGenerated code:`n$codeContext" }
@@ -806,11 +806,11 @@ function Invoke-CodeGeneration {
     )
 
     $systemPrompt = switch ($Framework) {
-        'powershell'        { $script:BuilderPowerShellPrompt }
+        'powershell' { $script:BuilderPowerShellPrompt }
         'powershell-module' { $script:BuilderPowerShellModulePrompt }
-        'python-tk'         { $script:BuilderTkinterPrompt }
-        'python-web'        { $script:BuilderPyWebViewPrompt }
-        'tauri'             { $script:BuilderTauriPrompt }
+        'python-tk' { $script:BuilderTkinterPrompt }
+        'python-web' { $script:BuilderPyWebViewPrompt }
+        'tauri' { $script:BuilderTauriPrompt }
     }
 
     $themeRule = $script:ThemePresets[$Theme][$Framework]
@@ -882,20 +882,20 @@ function Invoke-CodeGeneration {
                 # Fallback: infer filename from language tag
                 $fileName = switch ($block.Language) {
                     'powershell' { if ($Framework -eq 'powershell-module') { if ($files.Keys -match '\.psm1$') { 'module.psd1' } else { 'module.psm1' } } else { if ($files.ContainsKey('app.ps1')) { "source/file_$($block.Index).ps1" } else { 'app.ps1' } } }
-                    'ps1'        { if ($files.ContainsKey('app.ps1')) { "source/file_$($block.Index).ps1" } else { 'app.ps1' } }
-                    'psd1'       { 'module.psd1' }
-                    'python'     { if ($files.ContainsKey('app.py')) { "module_$($block.Index).py" } else { 'app.py' } }
-                    'py'         { if ($files.ContainsKey('app.py')) { "module_$($block.Index).py" } else { 'app.py' } }
-                    'html'       { 'web/index.html' }
-                    'css'        { 'web/style.css' }
+                    'ps1' { if ($files.ContainsKey('app.ps1')) { "source/file_$($block.Index).ps1" } else { 'app.ps1' } }
+                    'psd1' { 'module.psd1' }
+                    'python' { if ($files.ContainsKey('app.py')) { "module_$($block.Index).py" } else { 'app.py' } }
+                    'py' { if ($files.ContainsKey('app.py')) { "module_$($block.Index).py" } else { 'app.py' } }
+                    'html' { 'web/index.html' }
+                    'css' { 'web/style.css' }
                     'javascript' { 'web/script.js' }
-                    'js'         { 'web/script.js' }
-                    'rust'       { if (-not $files.ContainsKey('src-tauri/src/main.rs')) { 'src-tauri/src/main.rs' } elseif (-not $files.ContainsKey('src-tauri/build.rs')) { 'src-tauri/build.rs' } else { "src-tauri/src/file_$($block.Index).rs" } }
-                    'rs'         { if (-not $files.ContainsKey('src-tauri/src/main.rs')) { 'src-tauri/src/main.rs' } elseif (-not $files.ContainsKey('src-tauri/build.rs')) { 'src-tauri/build.rs' } else { "src-tauri/src/file_$($block.Index).rs" } }
-                    'toml'       { 'src-tauri/Cargo.toml' }
-                    'json'       { if ($Framework -eq 'tauri') { 'src-tauri/tauri.conf.json' } else { "file_$($block.Index).json" } }
-                    'text'       { 'requirements.txt' }
-                    default      { "file_$($block.Index).txt" }
+                    'js' { 'web/script.js' }
+                    'rust' { if (-not $files.ContainsKey('src-tauri/src/main.rs')) { 'src-tauri/src/main.rs' } elseif (-not $files.ContainsKey('src-tauri/build.rs')) { 'src-tauri/build.rs' } else { "src-tauri/src/file_$($block.Index).rs" } }
+                    'rs' { if (-not $files.ContainsKey('src-tauri/src/main.rs')) { 'src-tauri/src/main.rs' } elseif (-not $files.ContainsKey('src-tauri/build.rs')) { 'src-tauri/build.rs' } else { "src-tauri/src/file_$($block.Index).rs" } }
+                    'toml' { 'src-tauri/Cargo.toml' }
+                    'json' { if ($Framework -eq 'tauri') { 'src-tauri/tauri.conf.json' } else { "file_$($block.Index).json" } }
+                    'text' { 'requirements.txt' }
+                    default { "file_$($block.Index).txt" }
                 }
             }
 
@@ -917,10 +917,10 @@ function Invoke-CodeGeneration {
         else {
             # Full generation: validate we got the primary file
             $primaryFile = switch ($Framework) {
-                'powershell'        { 'app.ps1' }
+                'powershell' { 'app.ps1' }
                 'powershell-module' { $files.Keys | Where-Object { $_ -match '\.psm1$' } | Select-Object -First 1 }
-                'tauri'             { 'src-tauri/src/main.rs' }
-                default             { 'app.py' }
+                'tauri' { 'src-tauri/src/main.rs' }
+                default { 'app.py' }
             }
             if (-not $primaryFile) { $primaryFile = 'module.psm1' }
             if (-not $files.ContainsKey($primaryFile)) {
@@ -959,7 +959,7 @@ function Repair-GeneratedCode {
     )
 
     $totalFixes = 0
-    $knownScopes = @('global','local','script','private','using','workflow','env','variable','function','alias')
+    $knownScopes = @('global', 'local', 'script', 'private', 'using', 'workflow', 'env', 'variable', 'function', 'alias')
 
     foreach ($fileName in @($Files.Keys)) {
         $ext = [System.IO.Path]::GetExtension($fileName).ToLower()
@@ -979,7 +979,7 @@ function Repair-GeneratedCode {
                 if (-not $varErr) { break }
 
                 $startOff = $varErr.Extent.StartOffset
-                $errText  = $varErr.Extent.Text
+                $errText = $varErr.Extent.Text
 
                 if ($varErr.Message -match "':' was not followed") {
                     if ($errText -match '^\$(\w+):') {
@@ -1178,9 +1178,9 @@ function Test-GeneratedCode {
 
         # Security scan: language-aware dangerous patterns (only apply to matching file types)
         $dangerousPatterns = switch ($ext) {
-            '.ps1'  { $script:DangerousPowerShellPatterns }
+            '.ps1' { $script:DangerousPowerShellPatterns }
             '.psm1' { $script:DangerousPowerShellPatterns }
-            '.py'   { $script:DangerousPythonPatterns }
+            '.py' { $script:DangerousPythonPatterns }
             default { @() }
         }
 
@@ -1216,7 +1216,7 @@ function Test-GeneratedCode {
     # Tauri Rust validation: lightweight manifest + structure checks
     if ($Framework -eq 'tauri') {
         $tomlFile = $Files.Keys | Where-Object { $_ -match 'Cargo\.toml$' } | Select-Object -First 1
-        $rsFiles  = @($Files.Keys | Where-Object { $_ -match '\.rs$' })
+        $rsFiles = @($Files.Keys | Where-Object { $_ -match '\.rs$' })
 
         if ($tomlFile) {
             $tomlContent = $Files[$tomlFile]
@@ -1309,7 +1309,7 @@ function Test-GeneratedCode {
         # Basic Rust syntax: check balanced braces in each .rs file
         foreach ($rsFile in $rsFiles) {
             $rsCode = $Files[$rsFile]
-            $openBraces  = ([regex]::Matches($rsCode, '\{')).Count
+            $openBraces = ([regex]::Matches($rsCode, '\{')).Count
             $closeBraces = ([regex]::Matches($rsCode, '\}')).Count
             if ($openBraces -ne $closeBraces) {
                 $errors.Add("[$rsFile] Rust syntax: unbalanced braces (open=$openBraces, close=$closeBraces)")
@@ -1416,8 +1416,8 @@ function Invoke-BuildFixLoop {
 
         # Determine if errors are isolated to specific files (surgical repair candidate)
         $errorFiles = @($Errors | ForEach-Object {
-            if ($_ -match '^\[([^\]]+)\]') { $Matches[1] }
-        } | Sort-Object -Unique)
+                if ($_ -match '^\[([^\]]+)\]') { $Matches[1] }
+            } | Sort-Object -Unique)
         $useSurgical = $currentFiles -and $errorFiles.Count -gt 0 -and $errorFiles.Count -lt $currentFiles.Count
 
         if ($useSurgical) {
@@ -1951,10 +1951,11 @@ function Repair-TauriSource {
     )
 
     $tauriDir = Join-Path $SourceDir 'src-tauri'
-    $srcDir   = Join-Path $tauriDir 'src'
+    $srcDir = Join-Path $tauriDir 'src'
     if (-not (Test-Path $srcDir)) { return 0 }
 
     $repairCount = 0
+    $deAsyncedFns = @()
     $rsFiles = Get-ChildItem $srcDir -Filter '*.rs' -Recurse -File
 
     foreach ($rsFile in $rsFiles) {
@@ -2023,10 +2024,11 @@ function Repair-TauriSource {
             $chunks = $content -split '(?=#\[tauri::command\])'
             $newChunks = @()
             foreach ($chunk in $chunks) {
-                if ($chunk -match '#\[tauri::command\]' -and $chunk -match 'pub\s+async\s+fn' -and $chunk -notmatch '\.await') {
+                if ($chunk -match '#\[tauri::command\]' -and $chunk -match 'pub\s+async\s+fn\s+(\w+)' -and $chunk -notmatch '\.await') {
+                    $deAsyncedFns += $Matches[1]
                     $chunk = $chunk -replace 'pub\s+async\s+fn', 'pub fn'
                     $repairCount++
-                    Write-Host "[Repair-TauriSource] Removed unnecessary async from command in $($rsFile.Name)" -ForegroundColor DarkGray
+                    Write-Host "[Repair-TauriSource] Removed unnecessary async from $($Matches[1]) in $($rsFile.Name)" -ForegroundColor DarkGray
                 }
                 $newChunks += $chunk
             }
@@ -2080,7 +2082,8 @@ function Repair-TauriSource {
 
                     $invokeHandlers = if ($commandFns.Count -gt 0) {
                         "            .invoke_handler(tauri::generate_handler![`n                $($commandFns -join ",`n                ")`n            ])"
-                    } else { '' }
+                    }
+                    else { '' }
 
                     $pluginBlock = $pluginInits -join "`n"
 
@@ -2112,6 +2115,48 @@ $invokeHandlers
         if ($content -ne $original) {
             Set-Content $rsFile.FullName $content -Encoding UTF8 -NoNewline
             $repairCount++
+        }
+    }
+
+    # ── Fix 5b: Cascade — remove .await from calls to de-async'd functions ──
+    # When Fix 5 removes async from fn foo(), callers doing foo().await now break.
+    # Strip those stale .await calls, then re-check: callers may themselves become await-free.
+    if ($deAsyncedFns.Count -gt 0) {
+        $cascadeChanged = $true
+        while ($cascadeChanged) {
+            $cascadeChanged = $false
+            foreach ($rsFile in $rsFiles) {
+                $content = Get-Content $rsFile.FullName -Raw -Encoding UTF8
+                $original = $content
+
+                foreach ($fn in $deAsyncedFns) {
+                    $content = [regex]::Replace($content, "(\b${fn}\s*\([^)]*\))\s*\.await", '$1')
+                }
+
+                if ($content -match '#\[tauri::command\]') {
+                    $chunks = $content -split '(?=#\[tauri::command\])'
+                    $newChunks = @()
+                    foreach ($chunk in $chunks) {
+                        if ($chunk -match '#\[tauri::command\]' -and $chunk -match 'pub\s+async\s+fn\s+(\w+)' -and $chunk -notmatch '\.await') {
+                            $fnName = $Matches[1]
+                            if ($fnName -notin $deAsyncedFns) {
+                                $deAsyncedFns += $fnName
+                                $cascadeChanged = $true
+                            }
+                            $chunk = $chunk -replace 'pub\s+async\s+fn', 'pub fn'
+                            $repairCount++
+                            Write-Host "[Repair-TauriSource] Cascade: removed async from $fnName in $($rsFile.Name)" -ForegroundColor DarkGray
+                        }
+                        $newChunks += $chunk
+                    }
+                    $content = $newChunks -join ''
+                }
+
+                if ($content -ne $original) {
+                    Set-Content $rsFile.FullName $content -Encoding UTF8 -NoNewline
+                    $repairCount++
+                }
+            }
         }
     }
 
@@ -2357,7 +2402,7 @@ function Build-TauriExecutable {
         # 3. src-tauri/target/release/bundle/msi/*.msi (MSI installer — extract or report)
         $releaseDir = Join-Path $tauriDir 'target\release'
         $releaseExe = Get-ChildItem $releaseDir -Filter '*.exe' -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -notmatch 'build-script' } | Select-Object -First 1
+        Where-Object { $_.Name -notmatch 'build-script' } | Select-Object -First 1
 
         # Check NSIS bundle
         if (-not $releaseExe) {
@@ -2379,7 +2424,7 @@ function Build-TauriExecutable {
         # Also do a recursive search as a final fallback
         if (-not $releaseExe -and -not $releaseMsi) {
             $releaseExe = Get-ChildItem (Join-Path $releaseDir 'bundle') -Filter '*.exe' -Recurse -ErrorAction SilentlyContinue |
-                Select-Object -First 1
+            Select-Object -First 1
         }
 
         if ($releaseExe) {
@@ -2443,7 +2488,7 @@ function Build-PowerShellModule {
     try {
         # Convert app name to PascalCase module name
         $moduleName = ($AppName -replace '[^a-zA-Z0-9]', ' ').Trim() -split '\s+' | ForEach-Object {
-            if ($_.Length -gt 0) { $_.Substring(0,1).ToUpper() + $_.Substring(1).ToLower() }
+            if ($_.Length -gt 0) { $_.Substring(0, 1).ToUpper() + $_.Substring(1).ToLower() }
         }
         $moduleName = $moduleName -join ''
         if (-not $moduleName) { $moduleName = 'BildsyModule' }
@@ -2540,7 +2585,7 @@ Generated by BildsyPS — https://github.com/gsultani/bildsyps
 # ===== SQLite Build Tracking =====
 
 function Initialize-BuildsTable {
-    if (-not $global:ChatDbReady) { return $false }
+    if (-not (Ensure-ChatDbReady)) { return $false }
     if (-not (Get-Command Get-ChatDbConnection -ErrorAction SilentlyContinue)) { return $false }
 
     try {
@@ -2566,8 +2611,6 @@ CREATE TABLE IF NOT EXISTS builds (
 "@
         $cmd.ExecuteNonQuery() | Out-Null
         $cmd.Dispose()
-        $conn.Close()
-        $conn.Dispose()
         return $true
     }
     catch { return $false }
@@ -2576,7 +2619,7 @@ CREATE TABLE IF NOT EXISTS builds (
 # ===== Build Memory (learned constraints from failures) =====
 
 function Initialize-BuildMemoryTable {
-    if (-not $global:ChatDbReady) { return $false }
+    if (-not (Ensure-ChatDbReady)) { return $false }
     if (-not (Get-Command Get-ChatDbConnection -ErrorAction SilentlyContinue)) { return $false }
 
     try {
@@ -2595,8 +2638,6 @@ CREATE TABLE IF NOT EXISTS build_memory (
 "@
         $cmd.ExecuteNonQuery() | Out-Null
         $cmd.Dispose()
-        $conn.Close()
-        $conn.Dispose()
         return $true
     }
     catch { return $false }
@@ -2633,7 +2674,6 @@ function Save-BuildConstraint {
             $updateCmd.Parameters.Add([Microsoft.Data.Sqlite.SqliteParameter]::new("@id", $existingId)) | Out-Null
             $updateCmd.ExecuteNonQuery() | Out-Null
             $updateCmd.Dispose()
-            $conn.Close(); $conn.Dispose()
             return
         }
         $reader.Close()
@@ -2681,9 +2721,6 @@ function Save-BuildConstraint {
             $insertCmd.ExecuteNonQuery() | Out-Null
             $insertCmd.Dispose()
         }
-
-        $conn.Close()
-        $conn.Dispose()
     }
     catch {
         Write-Verbose "AppBuilder: Failed to save build constraint: $($_.Exception.Message)"
@@ -2715,8 +2752,6 @@ DELETE FROM build_memory WHERE id IN (
 "@
         $deleted += $capCmd.ExecuteNonQuery()
         $capCmd.Dispose()
-        $conn.Close()
-        $conn.Dispose()
         if ($deleted -gt 0) {
             Write-Verbose "AppBuilder: Cleaned up $deleted stale build constraint(s)"
         }
@@ -2751,8 +2786,6 @@ function Get-BuildConstraints {
         }
         $reader.Close()
         $cmd.Dispose()
-        $conn.Close()
-        $conn.Dispose()
         return @($constraints)
     }
     catch { return @() }
@@ -2849,8 +2882,6 @@ function Save-BuildRecord {
         $cmd.Parameters.Add([Microsoft.Data.Sqlite.SqliteParameter]::new("@bt", $BuildTime)) | Out-Null
         $cmd.ExecuteNonQuery() | Out-Null
         $cmd.Dispose()
-        $conn.Close()
-        $conn.Dispose()
     }
     catch {
         Write-Verbose "AppBuilder: Failed to save build record: $($_.Exception.Message)"
@@ -2872,24 +2903,22 @@ function Get-AppBuilds {
             $cmd = $conn.CreateCommand()
             $cmd.CommandText = "SELECT id, name, framework, status, exe_path, branded, created_at, build_time_s, error FROM builds ORDER BY created_at DESC LIMIT 20"
             $reader = $cmd.ExecuteReader()
-            $builds = @()
+            $builds = [System.Collections.Generic.List[object]]::new()
             while ($reader.Read()) {
-                $builds += [PSCustomObject]@{
-                    Id        = $reader['id']
-                    Name      = $reader['name']
-                    Framework = $reader['framework']
-                    Status    = $reader['status']
-                    ExePath   = $reader['exe_path']
-                    Branded   = [bool][int]$reader['branded']
-                    CreatedAt = $reader['created_at']
-                    BuildTime = $reader['build_time_s']
-                    Error     = $reader['error']
-                }
+                $builds.Add([PSCustomObject]@{
+                        Id        = $reader['id']
+                        Name      = $reader['name']
+                        Framework = $reader['framework']
+                        Status    = $reader['status']
+                        ExePath   = $reader['exe_path']
+                        Branded   = [bool][int]$reader['branded']
+                        CreatedAt = $reader['created_at']
+                        BuildTime = $reader['build_time_s']
+                        Error     = $reader['error']
+                    }) | Out-Null
             }
             $reader.Close()
             $cmd.Dispose()
-            $conn.Close()
-            $conn.Dispose()
 
             if ($builds.Count -eq 0) {
                 Write-Host "No builds yet. Use: build `"description of your app`"" -ForegroundColor DarkGray
@@ -2963,8 +2992,6 @@ function Remove-AppBuild {
             $cmd.Parameters.Add([Microsoft.Data.Sqlite.SqliteParameter]::new("@n", $Name)) | Out-Null
             $cmd.ExecuteNonQuery() | Out-Null
             $cmd.Dispose()
-            $conn.Close()
-            $conn.Dispose()
         }
         catch { }
     }
@@ -3013,7 +3040,7 @@ function New-AppBuild {
         [string]$Provider,
         [string]$Model,
         [switch]$NoBranding,
-        [ValidateSet('dark','light','system')][string]$Theme = 'system',
+        [ValidateSet('dark', 'light', 'system')][string]$Theme = 'system',
         [string]$IconPath
     )
 
@@ -3101,7 +3128,7 @@ function New-AppBuild {
     $codeMaxTokens = Get-BuildMaxTokens -Framework $framework -Model $resolvedModel -Override $MaxTokens
 
     # Estimate input tokens from actual prompt size (spec + plan + contract)
-    $inputTokenEstimate = [math]::Ceiling($generationSpec.Length / 4)
+    $inputTokenEstimate = Get-EstimatedTokenCount -Text $generationSpec
     Write-Host "[AppBuilder] Input estimate: $($generationSpec.Length) chars (~$inputTokenEstimate tokens). Output budget: $codeMaxTokens tokens (model: $resolvedModel)" -ForegroundColor DarkGray
 
     # Hard floor: no model with <4096 output tokens can produce a working app
@@ -3123,15 +3150,15 @@ function New-AppBuild {
     $featureCount = $specFeatureCount
     # Framework-aware base cost: Tauri needs Rust+HTML+CSS+JS+TOML+conf, python-web needs Py+HTML+CSS
     $outputBaseCost = switch ($framework) {
-        'tauri'      { 8000 }
+        'tauri' { 8000 }
         'python-web' { 5000 }
-        'python-tk'  { 4500 }
-        default      { 4000 }
+        'python-tk' { 4500 }
+        default { 4000 }
     }
     $outputPerFeature = switch ($framework) {
-        'tauri'      { 2000 }
+        'tauri' { 2000 }
         'python-web' { 1800 }
-        default      { 1500 }
+        default { 1500 }
     }
     $expectedOutputTokens = $outputBaseCost + ($featureCount * $outputPerFeature)
     Write-Host "[AppBuilder] Output estimate: $featureCount features × $outputPerFeature + $outputBaseCost base = ~$expectedOutputTokens tokens (output budget: $codeMaxTokens, 80% threshold: $([math]::Floor($codeMaxTokens * 0.8)))" -ForegroundColor DarkGray
@@ -3183,7 +3210,7 @@ function New-AppBuild {
             # Verify: expected output still fits?
             $featureCount = $specFeatureCount
             $expectedOutputTokens = $outputBaseCost + ($featureCount * $outputPerFeature)
-            $inputTokenEstimate = [math]::Ceiling($generationSpec.Length / 4)
+            $inputTokenEstimate = Get-EstimatedTokenCount -Text $generationSpec
             Write-Host "[AppBuilder] Post-prune: $featureCount features → ~$expectedOutputTokens output tokens (budget: $codeMaxTokens). Input: ~$inputTokenEstimate tokens." -ForegroundColor DarkGray
             if ($expectedOutputTokens -gt ($codeMaxTokens * 0.9)) {
                 $msg = "Expected output (~$expectedOutputTokens tokens) still exceeds 90% of output budget ($codeMaxTokens) after pruning to $featureCount features. Simplify the prompt or use a model with higher output limits."
@@ -3281,10 +3308,10 @@ function New-AppBuild {
     # Step 6: Build
     $outputDir = Join-Path $global:AppBuilderPath $Name
     $buildResult = switch ($framework) {
-        'powershell'        { Build-PowerShellExecutable -SourceDir $sourceDir -AppName $Name -OutputDir $outputDir -IconPath $IconPath }
+        'powershell' { Build-PowerShellExecutable -SourceDir $sourceDir -AppName $Name -OutputDir $outputDir -IconPath $IconPath }
         'powershell-module' { Build-PowerShellModule -SourceDir $sourceDir -AppName $Name -OutputDir $outputDir }
-        'tauri'             { Build-TauriExecutable -SourceDir $sourceDir -AppName $Name -OutputDir $outputDir -IconPath $IconPath }
-        default             { Build-PythonExecutable -SourceDir $sourceDir -AppName $Name -Framework $framework -OutputDir $outputDir -IconPath $IconPath }
+        'tauri' { Build-TauriExecutable -SourceDir $sourceDir -AppName $Name -OutputDir $outputDir -IconPath $IconPath }
+        default { Build-PythonExecutable -SourceDir $sourceDir -AppName $Name -Framework $framework -OutputDir $outputDir -IconPath $IconPath }
     }
 
     # Step 6b: Runtime smoke test for PowerShell builds
@@ -3382,7 +3409,7 @@ function Update-AppBuild {
         [Parameter(Mandatory)][string]$Changes,
         [string]$Provider,
         [string]$Model,
-        [ValidateSet('dark','light','system')][string]$Theme = 'system'
+        [ValidateSet('dark', 'light', 'system')][string]$Theme = 'system'
     )
 
     $sourceDir = Join-Path $global:AppBuilderPath "$Name\source"
@@ -3400,10 +3427,10 @@ function Update-AppBuild {
 
     # Detect framework from files
     $framework = if ($files.Keys | Where-Object { $_ -match '\.psm1$' }) { 'powershell-module' }
-                 elseif ($files.ContainsKey('app.ps1')) { 'powershell' }
-                 elseif ($files.ContainsKey('src-tauri/src/main.rs') -or $files.ContainsKey('src-tauri/Cargo.toml')) { 'tauri' }
-                 elseif ($files.ContainsKey('web/index.html')) { 'python-web' }
-                 else { 'python-tk' }
+    elseif ($files.ContainsKey('app.ps1')) { 'powershell' }
+    elseif ($files.ContainsKey('src-tauri/src/main.rs') -or $files.ContainsKey('src-tauri/Cargo.toml')) { 'tauri' }
+    elseif ($files.ContainsKey('web/index.html')) { 'python-web' }
+    else { 'python-tk' }
 
     # Check if user wants full regeneration
     $fullRegenTriggers = @('rewrite', 'redesign', 'from scratch', 'start over', 'completely new')
@@ -3431,8 +3458,6 @@ function Update-AppBuild {
                 $result = $cmd.ExecuteScalar()
                 if ($result) { $originalPrompt = "$result. Additional requirements: $Changes" }
                 $cmd.Dispose()
-                $conn.Close()
-                $conn.Dispose()
             }
             catch { }
         }
@@ -3443,8 +3468,8 @@ function Update-AppBuild {
     Write-Host "[AppBuilder] Applying modifications to '$Name'..." -ForegroundColor Cyan
 
     $sourceContext = ($files.Keys | ForEach-Object {
-        "--- $_ ---`n$($files[$_])`n"
-    }) -join "`n"
+            "--- $_ ---`n$($files[$_])`n"
+        }) -join "`n"
 
     $messages = @(
         @{ role = 'user'; content = "Here is the current source code:`n`n$sourceContext`n`nUser's change request: $Changes" }
@@ -3558,10 +3583,10 @@ function Update-AppBuild {
         # Rebuild
         $outputDir = Join-Path $global:AppBuilderPath $Name
         $buildResult = switch ($framework) {
-            'powershell'        { Build-PowerShellExecutable -SourceDir $sourceDir -AppName $Name -OutputDir $outputDir }
+            'powershell' { Build-PowerShellExecutable -SourceDir $sourceDir -AppName $Name -OutputDir $outputDir }
             'powershell-module' { Build-PowerShellModule -SourceDir $sourceDir -AppName $Name -OutputDir $outputDir }
-            'tauri'             { Build-TauriExecutable -SourceDir $sourceDir -AppName $Name -OutputDir $outputDir }
-            default             { Build-PythonExecutable -SourceDir $sourceDir -AppName $Name -Framework $framework -OutputDir $outputDir }
+            'tauri' { Build-TauriExecutable -SourceDir $sourceDir -AppName $Name -OutputDir $outputDir }
+            default { Build-PythonExecutable -SourceDir $sourceDir -AppName $Name -Framework $framework -OutputDir $outputDir }
         }
 
         if ($buildResult.Success) {
@@ -3586,7 +3611,7 @@ $_appBuildNameCompleter = {
     param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
     if (Test-Path $global:AppBuilderPath) {
         Get-ChildItem $global:AppBuilderPath -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -like "$wordToComplete*" } | Sort-Object Name | ForEach-Object {
+        Where-Object { $_.Name -like "$wordToComplete*" } | Sort-Object Name | ForEach-Object {
             [System.Management.Automation.CompletionResult]::new($_.Name, $_.Name, 'ParameterValue', "Build: $($_.Name)")
         }
     }

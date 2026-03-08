@@ -118,7 +118,12 @@ function Get-ProfileTiming {
     Write-Host "  Session ID: $($global:SessionId)" -ForegroundColor Gray
     Write-Host "  Session started: $($global:SessionStartTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Gray
     
-    Write-Host "`nLazy-loaded modules:" -ForegroundColor Yellow
+    # Per-module breakdown (populated by profile Stopwatch loop)
+    if ($global:ProfileTimings -and $global:ProfileTimings.Count -gt 0) {
+        Show-ProfileTimings
+    }
+
+    Write-Host "Lazy-loaded modules:" -ForegroundColor Yellow
     foreach ($mod in $global:LazyModules.Keys) {
         $status = if ($global:LazyModules[$mod]) { "Loaded" } else { "Not loaded (on-demand)" }
         $color = if ($global:LazyModules[$mod]) { "Green" } else { "DarkGray" }

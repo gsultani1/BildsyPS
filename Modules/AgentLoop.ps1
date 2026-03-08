@@ -221,7 +221,8 @@ function Show-AgentSteps {
         $preview = if ($step.Output) {
             $o = "$($step.Output)" -replace "`n", " "
             if ($o.Length -gt 60) { $o.Substring(0, 60) + "..." } else { $o }
-        } else { "" }
+        }
+        else { "" }
         Write-Host " $preview" -ForegroundColor Gray
     }
     if ($global:AgentLastResult.Summary) {
@@ -356,444 +357,445 @@ function Invoke-AgentTask {
 
     try {
 
-    # Reset state
-    $global:AgentAbort = $false
-    $global:AgentLastPlan = $null
-    if ($ParentMemory) {
-        # Shared memory from parent agent (depth 0→1)
-        $global:AgentMemory = $ParentMemory
-    }
-    elseif ($Memory) {
-        $global:AgentMemory = $Memory.Clone()
-    }
-    elseif ($global:AgentDepth -eq 1) {
-        # Top-level agent: fresh memory
-        $global:AgentMemory = @{}
-    }
-    # else: sub-agent gets whatever was passed or isolated copy
-
-    # Resolve provider and model
-    $providerConfig = $global:ChatProviders[$Provider]
-    if (-not $providerConfig) {
-        & $writeAgent "[Agent] Unknown provider: $Provider" -ForegroundColor Red
-        return @{ Success = $false; AbortReason = "UnknownProvider" }
-    }
-    if (-not $Model) { $Model = $providerConfig.DefaultModel }
-
-    # Check API key
-    if ($providerConfig.ApiKeyRequired) {
-        $apiKey = Get-ChatApiKey $Provider
-        if (-not $apiKey) {
-            & $writeAgent "[Agent] API key required for $($providerConfig.Name)." -ForegroundColor Red
-            return @{ Success = $false; AbortReason = "NoApiKey" }
+        # Reset state
+        $global:AgentAbort = $false
+        $global:AgentLastPlan = $null
+        if ($ParentMemory) {
+            # Shared memory from parent agent (depth 0→1)
+            $global:AgentMemory = $ParentMemory
         }
-    }
-
-    # Display task header
-    $depthLabel = if ($global:AgentDepth -gt 1) { " (depth $($global:AgentDepth))" } else { "" }
-    $modeLabel = if ($Interactive) { "Interactive Agent" } else { "Agent Task" }
-    & $writeAgent "`n===== ${modeLabel}${depthLabel} =====" -ForegroundColor Cyan
-    & $writeAgent "  Task: $Task" -ForegroundColor White
-    & $writeAgent "  Provider: $($providerConfig.Name) | Model: $Model" -ForegroundColor Gray
-    & $writeAgent "  Max steps: $MaxSteps | Tools: $($global:AgentTools.Count) | Ctrl+C to abort" -ForegroundColor Gray
-    if ($Interactive) { & $writeAgent "  Interactive: type follow-up tasks or 'done' to exit" -ForegroundColor Gray }
-    & $writeAgent "======================" -ForegroundColor Cyan
-    & $writeAgent ""
-
-    # Outer loop for interactive mode
-    $continueInteractive = $true
-    $allStepResults = @()
-    $allMessages = @()
-    $totalSteps = 0
-    $overallStart = Get-Date
-
-    while ($continueInteractive) {
-        # Build system prompt (refreshed each task to include updated memory)
-        $includeFolderCtx = $global:FolderContextEnabled -or (Test-Path .git -ErrorAction SilentlyContinue)
-        $systemPrompt = Get-AgentSystemPrompt -IncludeFolderContext:$includeFolderCtx -Memory $global:AgentMemory
-
-        # Initialize conversation for this task
-        $agentMessages = @()
-        # Carry forward previous messages in interactive mode for context
-        if ($Interactive -and $allMessages.Count -gt 0) {
-            # Inject a compact summary of prior work instead of full history
-            $priorSummary = "Previous agent work in this session: $($allStepResults.Count) steps completed."
-            if ($global:AgentMemory.Count -gt 0) {
-                $priorSummary += " Working memory: $($global:AgentMemory.Keys -join ', ')."
-            }
-            $agentMessages += @{ role = "user"; content = "[CONTEXT] $priorSummary" }
-            $agentMessages += @{ role = "assistant"; content = "Understood. I have context from our previous work and access to working memory." }
+        elseif ($Memory) {
+            $global:AgentMemory = $Memory.Clone()
         }
-        $agentMessages += @{ role = "user"; content = "TASK: $Task" }
+        elseif ($global:AgentDepth -eq 1) {
+            # Top-level agent: fresh memory
+            $global:AgentMemory = @{}
+        }
+        # else: sub-agent gets whatever was passed or isolated copy
 
-        $stepResults = @()
-        $stepNumber = 0
-        $taskStartTime = Get-Date
-        $done = $false
-        $finalSummary = ""
-        $abortReason = $null
+        # Resolve provider and model
+        $providerConfig = $global:ChatProviders[$Provider]
+        if (-not $providerConfig) {
+            & $writeAgent "[Agent] Unknown provider: $Provider" -ForegroundColor Red
+            return @{ Success = $false; AbortReason = "UnknownProvider" }
+        }
+        if (-not $Model) { $Model = $providerConfig.DefaultModel }
 
-        # ===== Main ReAct Loop =====
-        while ($stepNumber -lt $MaxSteps -and -not $done -and -not $global:AgentAbort) {
-            $stepNumber++
-            $totalSteps++
-
-            # Token budget check
-            $totalChars = ($agentMessages | ForEach-Object { $_.content.Length } | Measure-Object -Sum).Sum
-            $estimatedTokens = [math]::Ceiling($totalChars / 4)
-            if ($estimatedTokens -gt $global:AgentMaxTokenBudget) {
-                & $writeAgent "[Agent] Token budget exceeded (~$estimatedTokens tokens). Stopping." -ForegroundColor Yellow
-                $abortReason = "TokenBudget"
-                break
+        # Check API key
+        if ($providerConfig.ApiKeyRequired) {
+            $apiKey = Get-ChatApiKey $Provider
+            if (-not $apiKey) {
+                & $writeAgent "[Agent] API key required for $($providerConfig.Name)." -ForegroundColor Red
+                return @{ Success = $false; AbortReason = "NoApiKey" }
             }
+        }
 
-            # Rate limit check
-            if (Get-Command Test-RateLimit -ErrorAction SilentlyContinue) {
-                $rateCheck = Test-RateLimit
-                if (-not $rateCheck.Allowed) {
-                    & $writeAgent "[Agent] Rate limited: $($rateCheck.Message)" -ForegroundColor Yellow
-                    $abortReason = "RateLimit"
+        # Display task header
+        $depthLabel = if ($global:AgentDepth -gt 1) { " (depth $($global:AgentDepth))" } else { "" }
+        $modeLabel = if ($Interactive) { "Interactive Agent" } else { "Agent Task" }
+        & $writeAgent "`n===== ${modeLabel}${depthLabel} =====" -ForegroundColor Cyan
+        & $writeAgent "  Task: $Task" -ForegroundColor White
+        & $writeAgent "  Provider: $($providerConfig.Name) | Model: $Model" -ForegroundColor Gray
+        & $writeAgent "  Max steps: $MaxSteps | Tools: $($global:AgentTools.Count) | Ctrl+C to abort" -ForegroundColor Gray
+        if ($Interactive) { & $writeAgent "  Interactive: type follow-up tasks or 'done' to exit" -ForegroundColor Gray }
+        & $writeAgent "======================" -ForegroundColor Cyan
+        & $writeAgent ""
+
+        # Outer loop for interactive mode
+        $continueInteractive = $true
+        $allStepResults = [System.Collections.Generic.List[object]]::new()
+        $allMessages = [System.Collections.Generic.List[object]]::new()
+        $totalSteps = 0
+        $overallStart = Get-Date
+
+        while ($continueInteractive) {
+            # Build system prompt (refreshed each task to include updated memory)
+            $includeFolderCtx = $global:FolderContextEnabled -or (Test-Path .git -ErrorAction SilentlyContinue)
+            $systemPrompt = Get-AgentSystemPrompt -IncludeFolderContext:$includeFolderCtx -Memory $global:AgentMemory
+
+            # Initialize conversation for this task
+            $agentMessages = [System.Collections.Generic.List[object]]::new()
+            # Carry forward previous messages in interactive mode for context
+            if ($Interactive -and $allMessages.Count -gt 0) {
+                # Inject a compact summary of prior work instead of full history
+                $priorSummary = "Previous agent work in this session: $($allStepResults.Count) steps completed."
+                if ($global:AgentMemory.Count -gt 0) {
+                    $priorSummary += " Working memory: $($global:AgentMemory.Keys -join ', ')."
+                }
+                $agentMessages.Add(@{ role = "user"; content = "[CONTEXT] $priorSummary" })
+                $agentMessages.Add(@{ role = "assistant"; content = "Understood. I have context from our previous work and access to working memory." })
+            }
+            $agentMessages.Add(@{ role = "user"; content = "TASK: $Task" })
+
+            $stepResults = [System.Collections.Generic.List[object]]::new()
+            $stepNumber = 0
+            $taskStartTime = Get-Date
+            $done = $false
+            $finalSummary = ""
+            $abortReason = $null
+
+            # ===== Main ReAct Loop =====
+            while ($stepNumber -lt $MaxSteps -and -not $done -and -not $global:AgentAbort) {
+                $stepNumber++
+                $totalSteps++
+
+                # Token budget check
+                $estimatedTokens = Get-EstimatedTokenCount -Messages $agentMessages
+                if ($estimatedTokens -gt $global:AgentMaxTokenBudget) {
+                    & $writeAgent "[Agent] Token budget exceeded (~$estimatedTokens tokens). Stopping." -ForegroundColor Yellow
+                    $abortReason = "TokenBudget"
                     break
                 }
-            }
 
-            # Call LLM
-            & $writeAgent "[Step $stepNumber/$MaxSteps] Thinking..." -ForegroundColor DarkCyan
-            try {
-                $response = Invoke-ChatCompletion `
-                    -Messages $agentMessages `
-                    -Provider $Provider `
-                    -Model $Model `
-                    -Temperature 0.3 `
-                    -MaxTokens 2048 `
-                    -SystemPrompt $systemPrompt
-            }
-            catch {
-                & $writeAgent "[Agent] LLM call failed: $($_.Exception.Message)" -ForegroundColor Red
-                $abortReason = "LLMError"
-                break
-            }
-
-            $reply = $response.Content
-            $agentMessages += @{ role = "assistant"; content = $reply }
-
-            # Parse response for THOUGHT, ACTION, DONE, STUCK, ASK, PLAN
-            $thought = $null
-            $action = $null
-            $doneText = $null
-            $stuckText = $null
-            $askText = $null
-            $planLines = @()
-            $inPlan = $false
-
-            foreach ($line in ($reply -split "`n")) {
-                $trimmed = $line.Trim()
-                if ($inPlan) {
-                    if ($trimmed -match '^(THOUGHT|ACTION|DONE|STUCK|ASK):') {
-                        $inPlan = $false
-                        # Fall through to parse this line normally
+                # Rate limit check
+                if (Get-Command Test-RateLimit -ErrorAction SilentlyContinue) {
+                    $rateCheck = Test-RateLimit
+                    if (-not $rateCheck.Allowed) {
+                        & $writeAgent "[Agent] Rate limited: $($rateCheck.Message)" -ForegroundColor Yellow
+                        $abortReason = "RateLimit"
+                        break
                     }
-                    elseif ($trimmed) {
-                        $planLines += $trimmed
-                        continue
-                    }
-                    else { continue }
                 }
-                if ($trimmed -match '^THOUGHT:\s*(.+)$') {
-                    $thought = $Matches[1]
-                }
-                elseif ($trimmed -match '^ACTION:\s*(.+)$') {
-                    $action = $Matches[1]
-                }
-                elseif ($trimmed -match '^DONE:\s*(.+)$') {
-                    $doneText = $Matches[1]
-                }
-                elseif ($trimmed -match '^STUCK:\s*(.+)$') {
-                    $stuckText = $Matches[1]
-                }
-                elseif ($trimmed -match '^ASK:\s*(.+)$') {
-                    $askText = $Matches[1]
-                }
-                elseif ($trimmed -match '^PLAN:\s*$' -or $trimmed -match '^PLAN:$') {
-                    $inPlan = $true
-                }
-                elseif ($trimmed -match '^PLAN:\s*(.+)$') {
-                    $planLines += $Matches[1]
-                    $inPlan = $true
-                }
-                elseif (-not $action -and $trimmed -match '^\s*\{.*"(intent|tool)".*\}\s*$') {
-                    $action = $trimmed
-                }
-            }
 
-            # Display plan if provided
-            if ($planLines.Count -gt 0) {
-                $planText = $planLines -join "`n"
-                $global:AgentLastPlan = $planText
-                & $writeAgent "  Plan:" -ForegroundColor Magenta
-                foreach ($pl in $planLines) {
-                    & $writeAgent "    $pl" -ForegroundColor DarkMagenta
-                }
-            }
-
-            # Display thought
-            if ($thought -and $ShowThoughts) {
-                & $writeAgent "  Thought: $thought" -ForegroundColor DarkGray
-            }
-
-            # Handle DONE
-            if ($doneText) {
-                $done = $true
-                $finalSummary = $doneText
-                & $writeAgent "`n[Agent] Task Complete" -ForegroundColor Green
-                & $writeAgent "  $doneText" -ForegroundColor White
-                break
-            }
-
-            # Handle STUCK
-            if ($stuckText) {
-                $done = $true
-                $finalSummary = "STUCK: $stuckText"
-                $abortReason = "Stuck"
-                & $writeAgent "`n[Agent] Stuck -- needs user input" -ForegroundColor Yellow
-                & $writeAgent "  $stuckText" -ForegroundColor White
-                break
-            }
-
-            # Handle ASK -- pause for user input (skip in Silent/sub-agent mode)
-            if ($askText) {
-                if ($Silent) {
-                    # Sub-agents cannot ask questions — treat as stuck
-                    $done = $true
-                    $finalSummary = "STUCK (sub-agent cannot ask): $askText"
-                    $abortReason = "Stuck"
-                    break
-                }
-                & $writeAgent "`n[Agent] Question:" -ForegroundColor Magenta
-                & $writeAgent "  $askText" -ForegroundColor White
-                Write-Host -NoNewline "  Answer> " -ForegroundColor Yellow
-                $userAnswer = Read-Host
-                if ($userAnswer -in @('abort', 'cancel', 'stop')) {
-                    $global:AgentAbort = $true
-                    break
-                }
-                $agentMessages += @{ role = "user"; content = "ANSWER: $userAnswer" }
-                # Don't count ASK as an action step
-                $stepNumber = [math]::Max(0, $stepNumber - 1)
-                $totalSteps = [math]::Max(0, $totalSteps - 1)
-                continue
-            }
-
-            # Handle ACTION -- unified tool + intent dispatch
-            if ($action) {
-                $actionJson = $null
+                # Call LLM
+                & $writeAgent "[Step $stepNumber/$MaxSteps] Thinking..." -ForegroundColor DarkCyan
                 try {
-                    $actionJson = $action | ConvertFrom-Json
+                    $response = Invoke-ChatCompletion `
+                        -Messages $agentMessages `
+                        -Provider $Provider `
+                        -Model $Model `
+                        -Temperature 0.3 `
+                        -MaxTokens 2048 `
+                        -SystemPrompt $systemPrompt
                 }
                 catch {
-                    & $writeAgent "  [Agent] Failed to parse action JSON: $action" -ForegroundColor Red
-                    $observation = "OBSERVATION [step $stepNumber/$MaxSteps]:`n  Error: Could not parse JSON. Use {`"tool`":`"name`",...} or {`"intent`":`"name`",...}"
-                    $agentMessages += @{ role = "user"; content = $observation }
+                    & $writeAgent "[Agent] LLM call failed: $($_.Exception.Message)" -ForegroundColor Red
+                    $abortReason = "LLMError"
+                    break
+                }
+
+                $reply = $response.Content
+                $agentMessages.Add(@{ role = "assistant"; content = $reply })
+
+                # Parse response for THOUGHT, ACTION, DONE, STUCK, ASK, PLAN
+                $thought = $null
+                $action = $null
+                $doneText = $null
+                $stuckText = $null
+                $askText = $null
+                $planLines = [System.Collections.Generic.List[string]]::new()
+                $inPlan = $false
+
+                foreach ($line in ($reply -split "`n")) {
+                    $trimmed = $line.Trim()
+                    if ($inPlan) {
+                        if ($trimmed -match '^(THOUGHT|ACTION|DONE|STUCK|ASK):') {
+                            $inPlan = $false
+                            # Fall through to parse this line normally
+                        }
+                        elseif ($trimmed) {
+                            $planLines.Add($trimmed)
+                            continue
+                        }
+                        else { continue }
+                    }
+                    if ($trimmed -match '^THOUGHT:\s*(.+)$') {
+                        $thought = $Matches[1]
+                    }
+                    elseif ($trimmed -match '^ACTION:\s*(.+)$') {
+                        $action = $Matches[1]
+                    }
+                    elseif ($trimmed -match '^DONE:\s*(.+)$') {
+                        $doneText = $Matches[1]
+                    }
+                    elseif ($trimmed -match '^STUCK:\s*(.+)$') {
+                        $stuckText = $Matches[1]
+                    }
+                    elseif ($trimmed -match '^ASK:\s*(.+)$') {
+                        $askText = $Matches[1]
+                    }
+                    elseif ($trimmed -match '^PLAN:\s*$' -or $trimmed -match '^PLAN:$') {
+                        $inPlan = $true
+                    }
+                    elseif ($trimmed -match '^PLAN:\s*(.+)$') {
+                        $planLines.Add($Matches[1])
+                        $inPlan = $true
+                    }
+                    elseif (-not $action -and $trimmed -match '^\s*\{.*"(intent|tool)".*\}\s*$') {
+                        $action = $trimmed
+                    }
+                }
+
+                # Display plan if provided
+                if ($planLines.Count -gt 0) {
+                    $planText = $planLines -join "`n"
+                    $global:AgentLastPlan = $planText
+                    & $writeAgent "  Plan:" -ForegroundColor Magenta
+                    foreach ($pl in $planLines) {
+                        & $writeAgent "    $pl" -ForegroundColor DarkMagenta
+                    }
+                }
+
+                # Display thought
+                if ($thought -and $ShowThoughts) {
+                    & $writeAgent "  Thought: $thought" -ForegroundColor DarkGray
+                }
+
+                # Handle DONE
+                if ($doneText) {
+                    $done = $true
+                    $finalSummary = $doneText
+                    & $writeAgent "`n[Agent] Task Complete" -ForegroundColor Green
+                    & $writeAgent "  $doneText" -ForegroundColor White
+                    break
+                }
+
+                # Handle STUCK
+                if ($stuckText) {
+                    $done = $true
+                    $finalSummary = "STUCK: $stuckText"
+                    $abortReason = "Stuck"
+                    & $writeAgent "`n[Agent] Stuck -- needs user input" -ForegroundColor Yellow
+                    & $writeAgent "  $stuckText" -ForegroundColor White
+                    break
+                }
+
+                # Handle ASK -- pause for user input (skip in Silent/sub-agent mode)
+                if ($askText) {
+                    if ($Silent) {
+                        # Sub-agents cannot ask questions — treat as stuck
+                        $done = $true
+                        $finalSummary = "STUCK (sub-agent cannot ask): $askText"
+                        $abortReason = "Stuck"
+                        break
+                    }
+                    & $writeAgent "`n[Agent] Question:" -ForegroundColor Magenta
+                    & $writeAgent "  $askText" -ForegroundColor White
+                    Write-Host -NoNewline "  Answer> " -ForegroundColor Yellow
+                    $userAnswer = Read-Host
+                    if ($userAnswer -in @('abort', 'cancel', 'stop')) {
+                        $global:AgentAbort = $true
+                        break
+                    }
+                    $agentMessages.Add(@{ role = "user"; content = "ANSWER: $userAnswer" })
+                    # Don't count ASK as an action step
+                    $stepNumber = [math]::Max(0, $stepNumber - 1)
+                    $totalSteps = [math]::Max(0, $totalSteps - 1)
                     continue
                 }
 
-                $actionType = $null
-                $actionName = $null
-                $actionParams = @{}
+                # Handle ACTION -- unified tool + intent dispatch
+                if ($action) {
+                    $actionJson = $null
+                    try {
+                        $actionJson = $action | ConvertFrom-Json
+                    }
+                    catch {
+                        & $writeAgent "  [Agent] Failed to parse action JSON: $action" -ForegroundColor Red
+                        $observation = "OBSERVATION [step $stepNumber/$MaxSteps]:`n  Error: Could not parse JSON. Use {`"tool`":`"name`",...} or {`"intent`":`"name`",...}"
+                        $agentMessages.Add(@{ role = "user"; content = $observation })
+                        continue
+                    }
 
-                # Determine if it's a tool call or intent call
-                if ($actionJson.tool) {
-                    $actionType = 'tool'
-                    $actionName = $actionJson.tool
-                    $actionJson.PSObject.Properties | Where-Object { $_.Name -ne 'tool' } | ForEach-Object {
-                        $actionParams[$_.Name] = $_.Value
+                    $actionType = $null
+                    $actionName = $null
+                    $actionParams = @{}
+
+                    # Determine if it's a tool call or intent call
+                    if ($actionJson.tool) {
+                        $actionType = 'tool'
+                        $actionName = $actionJson.tool
+                        $actionJson.PSObject.Properties | Where-Object { $_.Name -ne 'tool' } | ForEach-Object {
+                            $actionParams[$_.Name] = $_.Value
+                        }
                     }
+                    elseif ($actionJson.intent) {
+                        $actionType = 'intent'
+                        $actionName = $actionJson.intent
+                        $actionJson.PSObject.Properties | Where-Object { $_.Name -ne 'intent' } | ForEach-Object {
+                            $actionParams[$_.Name] = $_.Value
+                        }
+                    }
+                    else {
+                        & $writeAgent "  [Agent] JSON must contain 'tool' or 'intent' key" -ForegroundColor Red
+                        $observation = "OBSERVATION [step $stepNumber/$MaxSteps]:`n  Error: JSON must have a 'tool' or 'intent' key."
+                        $agentMessages.Add(@{ role = "user"; content = $observation })
+                        continue
+                    }
+
+                    # Display action
+                    $typeIcon = if ($actionType -eq 'tool') { "T" } else { "I" }
+                    & $writeAgent "  [$typeIcon] $actionName" -ForegroundColor Yellow -NoNewline
+                    if ($actionParams.Count -gt 0) {
+                        $paramDisplay = ($actionParams.GetEnumerator() | ForEach-Object {
+                                $v = "$($_.Value)"
+                                if ($v.Length -gt 40) { $v = $v.Substring(0, 40) + "..." }
+                                "$($_.Key)=$v"
+                            }) -join ", "
+                        & $writeAgent " ($paramDisplay)" -ForegroundColor DarkYellow
+                    }
+                    else {
+                        & $writeAgent "" # newline
+                    }
+
+                    # Execute
+                    $stepStart = Get-Date
+                    $actionResult = $null
+
+                    if ($actionType -eq 'tool') {
+                        try {
+                            $actionResult = Invoke-AgentTool -Name $actionName -Params $actionParams
+                            $actionResult['ExecutionTime'] = ((Get-Date) - $stepStart).TotalSeconds
+                        }
+                        catch {
+                            $actionResult = @{
+                                Success       = $false
+                                Output        = "Tool exception: $($_.Exception.Message)"
+                                ExecutionTime = ((Get-Date) - $stepStart).TotalSeconds
+                            }
+                        }
+                    }
+                    else {
+                        # Intent dispatch
+                        try {
+                            $intentResult = Invoke-IntentAction -Intent $actionName -Payload $actionParams -AutoConfirm:$AutoConfirm
+                            $actionResult = @{
+                                Success       = $intentResult.Success
+                                Output        = $intentResult.Output
+                                ExecutionTime = $intentResult.ExecutionTime
+                            }
+                        }
+                        catch {
+                            $actionResult = @{
+                                Success       = $false
+                                Output        = "Intent exception: $($_.Exception.Message)"
+                                ExecutionTime = ((Get-Date) - $stepStart).TotalSeconds
+                            }
+                        }
+                    }
+
+                    # Display result
+                    $statusIcon = if ($actionResult.Success) { "[OK]" } else { "[FAIL]" }
+                    $statusColor = if ($actionResult.Success) { "Green" } else { "Red" }
+                    $outputPreview = if ($actionResult.Output) {
+                        $o = "$($actionResult.Output)" -replace "`n", " "
+                        if ($o.Length -gt 80) { $o.Substring(0, 80) + "..." } else { $o }
+                    }
+                    else { "(no output)" }
+                    & $writeAgent "  $statusIcon $outputPreview" -ForegroundColor $statusColor
+
+                    # Record step
+                    $stepRecord = @{
+                        Step          = $stepNumber
+                        Type          = $actionType
+                        Intent        = if ($actionType -eq 'intent') { $actionName } else { $null }
+                        Tool          = if ($actionType -eq 'tool') { $actionName } else { $null }
+                        Params        = $actionParams
+                        Success       = $actionResult.Success
+                        Output        = $actionResult.Output
+                        ExecutionTime = $actionResult.ExecutionTime
+                    }
+                    $stepResults.Add($stepRecord) | Out-Null
+
+                    # Build observation
+                    $observation = Format-AgentObservation `
+                        -StepNumber $stepNumber `
+                        -MaxSteps $MaxSteps `
+                        -ActionName $actionName `
+                        -ActionType $actionType `
+                        -Result $actionResult
+
+                    $agentMessages.Add(@{ role = "user"; content = $observation })
                 }
-                elseif ($actionJson.intent) {
-                    $actionType = 'intent'
-                    $actionName = $actionJson.intent
-                    $actionJson.PSObject.Properties | Where-Object { $_.Name -ne 'intent' } | ForEach-Object {
-                        $actionParams[$_.Name] = $_.Value
-                    }
+                elseif (-not $doneText -and -not $stuckText -and -not $askText) {
+                    & $writeAgent "  [Agent] No action detected. Nudging..." -ForegroundColor DarkYellow
+                    $agentMessages.Add(@{ role = "user"; content = "Respond with ACTION: {JSON}, DONE: result, ASK: question, or STUCK: reason." })
+                }
+            }
+
+            # Handle max steps reached
+            if ($stepNumber -ge $MaxSteps -and -not $done) {
+                $abortReason = "MaxSteps"
+                & $writeAgent "`n[Agent] Reached max steps ($MaxSteps). Stopping." -ForegroundColor Yellow
+            }
+
+            # Handle user abort
+            if ($global:AgentAbort -and -not $done) {
+                $abortReason = "UserAbort"
+                & $writeAgent "`n[Agent] Aborted by user." -ForegroundColor Yellow
+            }
+
+            # Accumulate results
+            $allStepResults.AddRange([object[]]$stepResults)
+            $allMessages.AddRange([object[]]$agentMessages)
+
+            $taskTime = ((Get-Date) - $taskStartTime).TotalSeconds
+            $taskTokensEst = Get-EstimatedTokenCount -Messages $agentMessages
+
+            # Summary
+            & $writeAgent "`n===== Agent Summary =====" -ForegroundColor Cyan
+            & $writeAgent "  Steps: $stepNumber | Time: $([math]::Round($taskTime, 1))s | ~$taskTokensEst tokens" -ForegroundColor Gray
+            $successes = @($stepResults | Where-Object { $_.Success }).Count
+            $failures = @($stepResults | Where-Object { -not $_.Success }).Count
+            if ($stepResults.Count -gt 0) {
+                & $writeAgent "  Results: $successes succeeded, $failures failed" -ForegroundColor $(if ($failures -eq 0) { 'Green' } else { 'Yellow' })
+            }
+            if ($global:AgentMemory.Count -gt 0) {
+                & $writeAgent "  Memory: $($global:AgentMemory.Keys -join ', ')" -ForegroundColor DarkCyan
+            }
+            if ($abortReason) {
+                & $writeAgent "  Stopped: $abortReason" -ForegroundColor Yellow
+            }
+            & $writeAgent "=========================" -ForegroundColor Cyan
+
+            # Toast notification (only for top-level agents)
+            if (-not $Silent -and (Get-Command Send-BildsyPSToast -ErrorAction SilentlyContinue)) {
+                $toastMsg = if ($finalSummary) {
+                    $s = $finalSummary; if ($s.Length -gt 80) { $s.Substring(0, 80) + '...' } else { $s }
+                }
+                else { "Agent finished ($stepNumber steps)" }
+                $toastType = if ($done -and -not $abortReason) { 'Success' } else { 'Warning' }
+                Send-BildsyPSToast -Title "Agent task complete" -Message $toastMsg -Type $toastType
+            }
+
+            # Interactive mode: prompt for follow-up (disabled in Silent mode)
+            if ($Interactive -and -not $Silent -and -not $global:AgentAbort) {
+                Write-Host ""
+                Write-Host -NoNewline "Agent> " -ForegroundColor Magenta
+                $followUp = Read-Host
+                if ($followUp -in @('done', 'exit', 'quit', '')) {
+                    $continueInteractive = $false
                 }
                 else {
-                    & $writeAgent "  [Agent] JSON must contain 'tool' or 'intent' key" -ForegroundColor Red
-                    $observation = "OBSERVATION [step $stepNumber/$MaxSteps]:`n  Error: JSON must have a 'tool' or 'intent' key."
-                    $agentMessages += @{ role = "user"; content = $observation }
+                    $Task = $followUp
+                    $global:AgentAbort = $false
+                    Write-Host ""
                     continue
                 }
-
-                # Display action
-                $typeIcon = if ($actionType -eq 'tool') { "T" } else { "I" }
-                & $writeAgent "  [$typeIcon] $actionName" -ForegroundColor Yellow -NoNewline
-                if ($actionParams.Count -gt 0) {
-                    $paramDisplay = ($actionParams.GetEnumerator() | ForEach-Object {
-                        $v = "$($_.Value)"
-                        if ($v.Length -gt 40) { $v = $v.Substring(0, 40) + "..." }
-                        "$($_.Key)=$v"
-                    }) -join ", "
-                    & $writeAgent " ($paramDisplay)" -ForegroundColor DarkYellow
-                }
-                else {
-                    & $writeAgent "" # newline
-                }
-
-                # Execute
-                $stepStart = Get-Date
-                $actionResult = $null
-
-                if ($actionType -eq 'tool') {
-                    try {
-                        $actionResult = Invoke-AgentTool -Name $actionName -Params $actionParams
-                        $actionResult['ExecutionTime'] = ((Get-Date) - $stepStart).TotalSeconds
-                    }
-                    catch {
-                        $actionResult = @{
-                            Success       = $false
-                            Output        = "Tool exception: $($_.Exception.Message)"
-                            ExecutionTime = ((Get-Date) - $stepStart).TotalSeconds
-                        }
-                    }
-                }
-                else {
-                    # Intent dispatch
-                    try {
-                        $intentResult = Invoke-IntentAction -Intent $actionName -Payload $actionParams -AutoConfirm:$AutoConfirm
-                        $actionResult = @{
-                            Success       = $intentResult.Success
-                            Output        = $intentResult.Output
-                            ExecutionTime = $intentResult.ExecutionTime
-                        }
-                    }
-                    catch {
-                        $actionResult = @{
-                            Success       = $false
-                            Output        = "Intent exception: $($_.Exception.Message)"
-                            ExecutionTime = ((Get-Date) - $stepStart).TotalSeconds
-                        }
-                    }
-                }
-
-                # Display result
-                $statusIcon = if ($actionResult.Success) { "[OK]" } else { "[FAIL]" }
-                $statusColor = if ($actionResult.Success) { "Green" } else { "Red" }
-                $outputPreview = if ($actionResult.Output) {
-                    $o = "$($actionResult.Output)" -replace "`n", " "
-                    if ($o.Length -gt 80) { $o.Substring(0, 80) + "..." } else { $o }
-                } else { "(no output)" }
-                & $writeAgent "  $statusIcon $outputPreview" -ForegroundColor $statusColor
-
-                # Record step
-                $stepRecord = @{
-                    Step          = $stepNumber
-                    Type          = $actionType
-                    Intent        = if ($actionType -eq 'intent') { $actionName } else { $null }
-                    Tool          = if ($actionType -eq 'tool') { $actionName } else { $null }
-                    Params        = $actionParams
-                    Success       = $actionResult.Success
-                    Output        = $actionResult.Output
-                    ExecutionTime = $actionResult.ExecutionTime
-                }
-                $stepResults += $stepRecord
-
-                # Build observation
-                $observation = Format-AgentObservation `
-                    -StepNumber $stepNumber `
-                    -MaxSteps $MaxSteps `
-                    -ActionName $actionName `
-                    -ActionType $actionType `
-                    -Result $actionResult
-
-                $agentMessages += @{ role = "user"; content = $observation }
-            }
-            elseif (-not $doneText -and -not $stuckText -and -not $askText) {
-                & $writeAgent "  [Agent] No action detected. Nudging..." -ForegroundColor DarkYellow
-                $agentMessages += @{ role = "user"; content = "Respond with ACTION: {JSON}, DONE: result, ASK: question, or STUCK: reason." }
-            }
-        }
-
-        # Handle max steps reached
-        if ($stepNumber -ge $MaxSteps -and -not $done) {
-            $abortReason = "MaxSteps"
-            & $writeAgent "`n[Agent] Reached max steps ($MaxSteps). Stopping." -ForegroundColor Yellow
-        }
-
-        # Handle user abort
-        if ($global:AgentAbort -and -not $done) {
-            $abortReason = "UserAbort"
-            & $writeAgent "`n[Agent] Aborted by user." -ForegroundColor Yellow
-        }
-
-        # Accumulate results
-        $allStepResults += $stepResults
-        $allMessages += $agentMessages
-
-        $taskTime = ((Get-Date) - $taskStartTime).TotalSeconds
-        $taskTokensEst = [math]::Ceiling(($agentMessages | ForEach-Object { $_.content.Length } | Measure-Object -Sum).Sum / 4)
-
-        # Summary
-        & $writeAgent "`n===== Agent Summary =====" -ForegroundColor Cyan
-        & $writeAgent "  Steps: $stepNumber | Time: $([math]::Round($taskTime, 1))s | ~$taskTokensEst tokens" -ForegroundColor Gray
-        $successes = @($stepResults | Where-Object { $_.Success }).Count
-        $failures = @($stepResults | Where-Object { -not $_.Success }).Count
-        if ($stepResults.Count -gt 0) {
-            & $writeAgent "  Results: $successes succeeded, $failures failed" -ForegroundColor $(if ($failures -eq 0) { 'Green' } else { 'Yellow' })
-        }
-        if ($global:AgentMemory.Count -gt 0) {
-            & $writeAgent "  Memory: $($global:AgentMemory.Keys -join ', ')" -ForegroundColor DarkCyan
-        }
-        if ($abortReason) {
-            & $writeAgent "  Stopped: $abortReason" -ForegroundColor Yellow
-        }
-        & $writeAgent "=========================" -ForegroundColor Cyan
-
-        # Toast notification (only for top-level agents)
-        if (-not $Silent -and (Get-Command Send-BildsyPSToast -ErrorAction SilentlyContinue)) {
-            $toastMsg = if ($finalSummary) {
-                $s = $finalSummary; if ($s.Length -gt 80) { $s.Substring(0, 80) + '...' } else { $s }
-            } else { "Agent finished ($stepNumber steps)" }
-            $toastType = if ($done -and -not $abortReason) { 'Success' } else { 'Warning' }
-            Send-BildsyPSToast -Title "Agent task complete" -Message $toastMsg -Type $toastType
-        }
-
-        # Interactive mode: prompt for follow-up (disabled in Silent mode)
-        if ($Interactive -and -not $Silent -and -not $global:AgentAbort) {
-            Write-Host ""
-            Write-Host -NoNewline "Agent> " -ForegroundColor Magenta
-            $followUp = Read-Host
-            if ($followUp -in @('done', 'exit', 'quit', '')) {
-                $continueInteractive = $false
             }
             else {
-                $Task = $followUp
-                $global:AgentAbort = $false
-                Write-Host ""
-                continue
+                $continueInteractive = $false
             }
         }
-        else {
-            $continueInteractive = $false
+
+        $overallTime = ((Get-Date) - $overallStart).TotalSeconds
+        $overallTokensEst = Get-EstimatedTokenCount -Messages $allMessages
+
+        # Store result globally (only for top-level agents)
+        $result = @{
+            Success     = ($done -and -not $abortReason)
+            Summary     = if ($finalSummary) { $finalSummary } else { "Agent stopped after $totalSteps steps ($abortReason)" }
+            Steps       = $allStepResults
+            StepCount   = $totalSteps
+            TotalTime   = [math]::Round($overallTime, 2)
+            TokensUsed  = $overallTokensEst
+            AbortReason = $abortReason
+            Messages    = $allMessages
+            Memory      = $global:AgentMemory.Clone()
         }
-    }
+        if (-not $Silent) { $global:AgentLastResult = $result }
 
-    $overallTime = ((Get-Date) - $overallStart).TotalSeconds
-    $overallTokensEst = [math]::Ceiling(($allMessages | ForEach-Object { $_.content.Length } | Measure-Object -Sum).Sum / 4)
-
-    # Store result globally (only for top-level agents)
-    $result = @{
-        Success     = ($done -and -not $abortReason)
-        Summary     = if ($finalSummary) { $finalSummary } else { "Agent stopped after $totalSteps steps ($abortReason)" }
-        Steps       = $allStepResults
-        StepCount   = $totalSteps
-        TotalTime   = [math]::Round($overallTime, 2)
-        TokensUsed  = $overallTokensEst
-        AbortReason = $abortReason
-        Messages    = $allMessages
-        Memory      = $global:AgentMemory.Clone()
-    }
-    if (-not $Silent) { $global:AgentLastResult = $result }
-
-    return $result
+        return $result
 
     } # end try
     finally {

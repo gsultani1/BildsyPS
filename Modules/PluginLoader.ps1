@@ -7,7 +7,7 @@
 
 $global:PluginsPath = "$global:BildsyPSHome\plugins"
 $global:PluginConfigPath = "$global:BildsyPSHome\plugins\Config"
-$global:BundledPluginsPath = "$PSScriptRoot\..\Plugins"
+$global:BundledPluginsPath = "$global:ModulesPath\..\Plugins"
 $global:LoadedPlugins = [ordered]@{}
 $global:PluginHelpers = @{}
 $global:PluginSettings = @{}
@@ -117,14 +117,14 @@ function Import-BildsyPSPlugins {
     $seen = @{}
     foreach ($sp in $searchPaths) {
         Get-ChildItem "$sp\*.ps1" -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -notlike '_*' } |
-            ForEach-Object {
-                # User plugins override bundled plugins with the same name
-                if (-not $seen.ContainsKey($_.Name)) {
-                    $seen[$_.Name] = $true
-                    $pluginFiles += $_
-                }
+        Where-Object { $_.Name -notlike '_*' } |
+        ForEach-Object {
+            # User plugins override bundled plugins with the same name
+            if (-not $seen.ContainsKey($_.Name)) {
+                $seen[$_.Name] = $true
+                $pluginFiles += $_
             }
+        }
     }
     $pluginFiles = $pluginFiles | Sort-Object Name
 
@@ -156,24 +156,24 @@ function Import-BildsyPSPlugins {
         $depWarnings = @()
     }
 
-    $loaded      = 0
-    $skipped     = 0
+    $loaded = 0
+    $skipped = 0
     $intentCount = 0
-    $warnings    = @($depWarnings)
+    $warnings = @($depWarnings)
 
     foreach ($file in $pluginFiles) {
         $pluginStart = Get-Date
 
         # Clear variables from previous iteration
-        $PluginIntents    = $null
-        $PluginMetadata   = $null
-        $PluginWorkflows  = $null
+        $PluginIntents = $null
+        $PluginMetadata = $null
+        $PluginWorkflows = $null
         $PluginCategories = $null
-        $PluginInfo       = $null
-        $PluginConfig     = $null
-        $PluginHooks      = $null
-        $PluginTests      = $null
-        $PluginFunctions  = $null
+        $PluginInfo = $null
+        $PluginConfig = $null
+        $PluginHooks = $null
+        $PluginTests = $null
+        $PluginFunctions = $null
 
         try {
             . $file.FullName
@@ -191,7 +191,7 @@ function Import-BildsyPSPlugins {
             continue
         }
 
-        $pluginName       = $file.BaseName
+        $pluginName = $file.BaseName
         $pluginIntentNames = @()
         $pluginWorkflowNames = @()
         $pluginCategoryNames = @()
@@ -316,22 +316,22 @@ function Import-BildsyPSPlugins {
         $pluginLoadMs = [math]::Round(((Get-Date) - $pluginStart).TotalMilliseconds)
 
         $global:LoadedPlugins[$pluginName] = @{
-            File        = $file.FullName
-            Intents     = $pluginIntentNames
-            Workflows   = $pluginWorkflowNames
-            Categories  = $pluginCategoryNames
-            Functions   = $pluginFunctionNames
-            HasConfig   = ($null -ne $PluginConfig -and $PluginConfig -is [hashtable])
-            HasHooks    = ($null -ne $PluginHooks -and $PluginHooks -is [hashtable])
-            HasTests    = ($null -ne $PluginTests -and $PluginTests -is [hashtable])
-            TestNames   = if ($PluginTests -and $PluginTests -is [hashtable]) { @($PluginTests.Keys) } else { @() }
-            Tests       = if ($PluginTests -and $PluginTests -is [hashtable]) { $PluginTests } else { $null }
-            Hooks       = if ($PluginHooks -and $PluginHooks -is [hashtable]) { $PluginHooks } else { $null }
+            File         = $file.FullName
+            Intents      = $pluginIntentNames
+            Workflows    = $pluginWorkflowNames
+            Categories   = $pluginCategoryNames
+            Functions    = $pluginFunctionNames
+            HasConfig    = ($null -ne $PluginConfig -and $PluginConfig -is [hashtable])
+            HasHooks     = ($null -ne $PluginHooks -and $PluginHooks -is [hashtable])
+            HasTests     = ($null -ne $PluginTests -and $PluginTests -is [hashtable])
+            TestNames    = if ($PluginTests -and $PluginTests -is [hashtable]) { @($PluginTests.Keys) } else { @() }
+            Tests        = if ($PluginTests -and $PluginTests -is [hashtable]) { $PluginTests } else { $null }
+            Hooks        = if ($PluginHooks -and $PluginHooks -is [hashtable]) { $PluginHooks } else { $null }
             Dependencies = if ($PluginInfo.Dependencies) { @($PluginInfo.Dependencies) } else { @() }
-            LoadTimeMs  = $pluginLoadMs
-            Version     = if ($PluginInfo.Version) { $PluginInfo.Version } else { $null }
-            Author      = if ($PluginInfo.Author) { $PluginInfo.Author } else { $null }
-            Description = if ($PluginInfo.Description) { $PluginInfo.Description } else { $null }
+            LoadTimeMs   = $pluginLoadMs
+            Version      = if ($PluginInfo.Version) { $PluginInfo.Version } else { $null }
+            Author       = if ($PluginInfo.Author) { $PluginInfo.Author } else { $null }
+            Description  = if ($PluginInfo.Description) { $PluginInfo.Description } else { $null }
         }
 
         # ── 8. Run OnLoad hook ──
@@ -354,8 +354,8 @@ function Import-BildsyPSPlugins {
             Name        = $global:CategoryDefinitions[$category].Name
             Description = $global:CategoryDefinitions[$category].Description
             Intents     = @($global:IntentMetadata.Keys | Where-Object {
-                $global:IntentMetadata[$_].Category -eq $category
-            } | Sort-Object)
+                    $global:IntentMetadata[$_].Category -eq $category
+                } | Sort-Object)
         }
     }
 
@@ -416,8 +416,8 @@ function Unregister-BildsyPSPlugin {
     # Remove categories (only if the plugin added them and no other intents remain)
     foreach ($catKey in $plugin.Categories) {
         $remaining = @($global:IntentMetadata.Keys | Where-Object {
-            $global:IntentMetadata[$_].Category -eq $catKey
-        })
+                $global:IntentMetadata[$_].Category -eq $catKey
+            })
         if ($remaining.Count -eq 0) {
             $global:CategoryDefinitions.Remove($catKey)
             $global:IntentCategories.Remove($catKey)
@@ -443,8 +443,8 @@ function Unregister-BildsyPSPlugin {
             Name        = $global:CategoryDefinitions[$category].Name
             Description = $global:CategoryDefinitions[$category].Description
             Intents     = @($global:IntentMetadata.Keys | Where-Object {
-                $global:IntentMetadata[$_].Category -eq $category
-            } | Sort-Object)
+                    $global:IntentMetadata[$_].Category -eq $category
+                } | Sort-Object)
         }
     }
 
@@ -463,7 +463,7 @@ function Enable-BildsyPSPlugin {
     param([Parameter(Mandatory = $true)][string]$Name)
 
     $disabledFile = Join-Path $global:PluginsPath "_$Name.ps1"
-    $enabledFile  = Join-Path $global:PluginsPath "$Name.ps1"
+    $enabledFile = Join-Path $global:PluginsPath "$Name.ps1"
 
     if (Test-Path $enabledFile) {
         Write-Host "Plugin '$Name' is already enabled." -ForegroundColor Yellow
@@ -489,7 +489,7 @@ function Disable-BildsyPSPlugin {
     #>
     param([Parameter(Mandatory = $true)][string]$Name)
 
-    $enabledFile  = Join-Path $global:PluginsPath "$Name.ps1"
+    $enabledFile = Join-Path $global:PluginsPath "$Name.ps1"
     $disabledFile = Join-Path $global:PluginsPath "_$Name.ps1"
 
     if (Test-Path $disabledFile) {
@@ -522,7 +522,7 @@ function Get-BildsyPSPlugins {
         foreach ($name in $global:LoadedPlugins.Keys) {
             $plugin = $global:LoadedPlugins[$name]
             $versionStr = if ($plugin.Version) { " v$($plugin.Version)" } else { "" }
-            $authorStr  = if ($plugin.Author) { " by $($plugin.Author)" } else { "" }
+            $authorStr = if ($plugin.Author) { " by $($plugin.Author)" } else { "" }
             Write-Host "  $name$versionStr$authorStr" -ForegroundColor Yellow -NoNewline
             Write-Host " ($($plugin.LoadTimeMs)ms)" -ForegroundColor DarkGray
             if ($plugin.Description) {
@@ -542,9 +542,9 @@ function Get-BildsyPSPlugins {
             }
             # Feature badges
             $badges = @()
-            if ($plugin.HasConfig)  { $badges += 'config' }
-            if ($plugin.HasHooks)   { $badges += 'hooks' }
-            if ($plugin.HasTests)   { $badges += 'tests' }
+            if ($plugin.HasConfig) { $badges += 'config' }
+            if ($plugin.HasHooks) { $badges += 'hooks' }
+            if ($plugin.HasTests) { $badges += 'tests' }
             if ($badges.Count -gt 0) {
                 Write-Host "    Features:   [$($badges -join '] [')]" -ForegroundColor DarkCyan
             }
@@ -556,7 +556,7 @@ function Get-BildsyPSPlugins {
 
     # Show disabled plugins
     $disabledFiles = Get-ChildItem "$global:PluginsPath\*.ps1" -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like '_*' }
+    Where-Object { $_.Name -like '_*' }
 
     if ($disabledFiles.Count -gt 0) {
         Write-Host "`nDisabled:" -ForegroundColor DarkGray
@@ -999,7 +999,7 @@ Register-ArgumentCompleter -CommandName Disable-BildsyPSPlugin -ParameterName Na
 Register-ArgumentCompleter -CommandName Import-BildsyPSPlugins -ParameterName Name -ScriptBlock {
     param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
     Get-ChildItem "$global:PluginsPath\*.ps1" -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -notlike '_*' } | ForEach-Object {
+    Where-Object { $_.Name -notlike '_*' } | ForEach-Object {
         if ($_.BaseName -like "$wordToComplete*") {
             [System.Management.Automation.CompletionResult]::new($_.BaseName, $_.BaseName, 'ParameterValue', $_.BaseName)
         }

@@ -94,9 +94,9 @@ function Get-AgentTools {
         Write-Host " — $($tool.Description)" -ForegroundColor Gray
         if ($tool.Parameters.Count -gt 0) {
             $paramStr = ($tool.Parameters | ForEach-Object {
-                $req = if ($_.Required) { "" } else { "?" }
-                "$($_.Name)$req"
-            }) -join ", "
+                    $req = if ($_.Required) { "" } else { "?" }
+                    "$($_.Name)$req"
+                }) -join ", "
             Write-Host "    params: $paramStr" -ForegroundColor DarkGray
         }
     }
@@ -134,663 +134,663 @@ function Get-AgentToolInfo {
 Register-AgentTool -Name 'calculator' `
     -Description 'Evaluate a math expression. Supports +, -, *, /, %, [math]:: methods.' `
     -Parameters @(
-        @{ Name = 'expression'; Required = $true; Description = 'Math expression, e.g. "2+2", "[math]::Sqrt(144)", "1200 * 0.08"' }
-    ) `
+    @{ Name = 'expression'; Required = $true; Description = 'Math expression, e.g. "2+2", "[math]::Sqrt(144)", "1200 * 0.08"' }
+) `
     -Execute {
-        param($p)
-        $expr = $p['expression']
-        # Strip whitespace for analysis
-        $clean = $expr.Trim()
-        # Block any bracket usage that isn't [math]::
-        if ($clean -match '\[' -and $clean -notmatch '^\[math\]::' -and $clean -notmatch '(?<=[\s(+\-*/])\[math\]::') {
-            # Only allow [math]:: — block [System.IO.File], [Convert], etc.
-            if ($clean -match '\[[^\]]*\]' -and $clean -notmatch '\[math\]') {
-                return @{ Success = $false; Output = 'Only [math]:: calls are allowed, not arbitrary .NET types' }
-            }
-        }
-        # Sanitize: allow digits, operators, parens, dots, [math]:: calls, spaces
-        $sanitized = $expr -replace '[^0-9+\-*/%.() ,\[\]a-zA-Z:]', ''
-        if ($sanitized -ne $expr) {
-            return @{ Success = $false; Output = "Expression contains disallowed characters" }
-        }
-        # Block cmdlets and known dangerous patterns
-        if ($sanitized -match '(Get-|Set-|Remove-|New-|Start-|Stop-|Invoke-|Import-|Export-|Write-|Read-)') {
-            return @{ Success = $false; Output = "Only math expressions are allowed" }
-        }
-        # Block .NET type access except [math]
-        if ($sanitized -match '\[(?!math\])') {
-            return @{ Success = $false; Output = 'Only [math]:: is allowed -- no other .NET type access' }
-        }
-        try {
-            $result = Invoke-Expression $sanitized
-            return @{ Success = $true; Output = "$sanitized = $result"; Value = $result }
-        }
-        catch {
-            return @{ Success = $false; Output = "Math error: $($_.Exception.Message)" }
+    param($p)
+    $expr = $p['expression']
+    # Strip whitespace for analysis
+    $clean = $expr.Trim()
+    # Block any bracket usage that isn't [math]::
+    if ($clean -match '\[' -and $clean -notmatch '^\[math\]::' -and $clean -notmatch '(?<=[\s(+\-*/])\[math\]::') {
+        # Only allow [math]:: — block [System.IO.File], [Convert], etc.
+        if ($clean -match '\[[^\]]*\]' -and $clean -notmatch '\[math\]') {
+            return @{ Success = $false; Output = 'Only [math]:: calls are allowed, not arbitrary .NET types' }
         }
     }
+    # Sanitize: allow digits, operators, parens, dots, [math]:: calls, spaces
+    $sanitized = $expr -replace '[^0-9+\-*/%.() ,\[\]a-zA-Z:]', ''
+    if ($sanitized -ne $expr) {
+        return @{ Success = $false; Output = "Expression contains disallowed characters" }
+    }
+    # Block cmdlets and known dangerous patterns
+    if ($sanitized -match '(Get-|Set-|Remove-|New-|Start-|Stop-|Invoke-|Import-|Export-|Write-|Read-)') {
+        return @{ Success = $false; Output = "Only math expressions are allowed" }
+    }
+    # Block .NET type access except [math]
+    if ($sanitized -match '\[(?!math\])') {
+        return @{ Success = $false; Output = 'Only [math]:: is allowed -- no other .NET type access' }
+    }
+    try {
+        $result = Invoke-Expression $sanitized
+        return @{ Success = $true; Output = "$sanitized = $result"; Value = $result }
+    }
+    catch {
+        return @{ Success = $false; Output = "Math error: $($_.Exception.Message)" }
+    }
+}
 
 # --- datetime ---
 Register-AgentTool -Name 'datetime' `
     -Description 'Get current date/time, do date math, or convert timezones.' `
     -Parameters @(
-        @{ Name = 'operation'; Required = $false; Description = 'now (default), add, diff, convert, format' }
-        @{ Name = 'value'; Required = $false; Description = 'Date string or offset like "7 days", "3 hours"' }
-        @{ Name = 'timezone'; Required = $false; Description = 'Target timezone ID, e.g. "Eastern Standard Time"' }
-        @{ Name = 'format'; Required = $false; Description = 'Date format string, e.g. "yyyy-MM-dd"' }
-    ) `
+    @{ Name = 'operation'; Required = $false; Description = 'now (default), add, diff, convert, format' }
+    @{ Name = 'value'; Required = $false; Description = 'Date string or offset like "7 days", "3 hours"' }
+    @{ Name = 'timezone'; Required = $false; Description = 'Target timezone ID, e.g. "Eastern Standard Time"' }
+    @{ Name = 'format'; Required = $false; Description = 'Date format string, e.g. "yyyy-MM-dd"' }
+) `
     -Execute {
-        param($p)
-        $op = if ($p['operation']) { $p['operation'] } else { 'now' }
-        switch ($op) {
-            'now' {
-                $fmt = if ($p['format']) { $p['format'] } else { 'yyyy-MM-dd HH:mm:ss zzz' }
-                $now = Get-Date
-                return @{ Success = $true; Output = $now.ToString($fmt); Value = $now }
-            }
-            'add' {
-                $val = $p['value']
-                if (-not $val) { return @{ Success = $false; Output = "Provide 'value' like '7 days' or '3 hours'" } }
-                $now = Get-Date
-                if ($val -match '^(-?\d+)\s*(day|days|hour|hours|minute|minutes|second|seconds|month|months|year|years)$') {
-                    $num = [int]$Matches[1]
-                    $unit = $Matches[2] -replace 's$', ''
-                    $result = switch ($unit) {
-                        'day'    { $now.AddDays($num) }
-                        'hour'   { $now.AddHours($num) }
-                        'minute' { $now.AddMinutes($num) }
-                        'second' { $now.AddSeconds($num) }
-                        'month'  { $now.AddMonths($num) }
-                        'year'   { $now.AddYears($num) }
-                    }
-                    return @{ Success = $true; Output = "$result"; Value = $result }
+    param($p)
+    $op = if ($p['operation']) { $p['operation'] } else { 'now' }
+    switch ($op) {
+        'now' {
+            $fmt = if ($p['format']) { $p['format'] } else { 'yyyy-MM-dd HH:mm:ss zzz' }
+            $now = Get-Date
+            return @{ Success = $true; Output = $now.ToString($fmt); Value = $now }
+        }
+        'add' {
+            $val = $p['value']
+            if (-not $val) { return @{ Success = $false; Output = "Provide 'value' like '7 days' or '3 hours'" } }
+            $now = Get-Date
+            if ($val -match '^(-?\d+)\s*(day|days|hour|hours|minute|minutes|second|seconds|month|months|year|years)$') {
+                $num = [int]$Matches[1]
+                $unit = $Matches[2] -replace 's$', ''
+                $result = switch ($unit) {
+                    'day' { $now.AddDays($num) }
+                    'hour' { $now.AddHours($num) }
+                    'minute' { $now.AddMinutes($num) }
+                    'second' { $now.AddSeconds($num) }
+                    'month' { $now.AddMonths($num) }
+                    'year' { $now.AddYears($num) }
                 }
-                return @{ Success = $false; Output = "Cannot parse '$val'. Use format: '7 days', '-3 hours'" }
+                return @{ Success = $true; Output = "$result"; Value = $result }
             }
-            'convert' {
-                $tz = $p['timezone']
-                if (-not $tz) { return @{ Success = $false; Output = "Provide 'timezone' like 'Eastern Standard Time'" } }
-                try {
-                    $tzInfo = [System.TimeZoneInfo]::FindSystemTimeZoneById($tz)
-                    $converted = [System.TimeZoneInfo]::ConvertTime((Get-Date), $tzInfo)
-                    return @{ Success = $true; Output = "$converted ($($tzInfo.DisplayName))"; Value = $converted }
-                }
-                catch {
-                    $zones = [System.TimeZoneInfo]::GetSystemTimeZones() | Where-Object { $_.Id -like "*$tz*" -or $_.DisplayName -like "*$tz*" } | Select-Object -First 5
-                    $suggestions = if ($zones) { ($zones | ForEach-Object { $_.Id }) -join ', ' } else { 'none found' }
-                    return @{ Success = $false; Output = "Unknown timezone '$tz'. Similar: $suggestions" }
-                }
+            return @{ Success = $false; Output = "Cannot parse '$val'. Use format: '7 days', '-3 hours'" }
+        }
+        'convert' {
+            $tz = $p['timezone']
+            if (-not $tz) { return @{ Success = $false; Output = "Provide 'timezone' like 'Eastern Standard Time'" } }
+            try {
+                $tzInfo = [System.TimeZoneInfo]::FindSystemTimeZoneById($tz)
+                $converted = [System.TimeZoneInfo]::ConvertTime((Get-Date), $tzInfo)
+                return @{ Success = $true; Output = "$converted ($($tzInfo.DisplayName))"; Value = $converted }
             }
-            'format' {
-                $fmt = if ($p['format']) { $p['format'] } else { 'o' }
-                $val = if ($p['value']) { [datetime]::Parse($p['value']) } else { Get-Date }
-                return @{ Success = $true; Output = $val.ToString($fmt) }
-            }
-            default {
-                return @{ Success = $false; Output = "Unknown operation '$op'. Use: now, add, diff, convert, format" }
+            catch {
+                $zones = [System.TimeZoneInfo]::GetSystemTimeZones() | Where-Object { $_.Id -like "*$tz*" -or $_.DisplayName -like "*$tz*" } | Select-Object -First 5
+                $suggestions = if ($zones) { ($zones | ForEach-Object { $_.Id }) -join ', ' } else { 'none found' }
+                return @{ Success = $false; Output = "Unknown timezone '$tz'. Similar: $suggestions" }
             }
         }
+        'format' {
+            $fmt = if ($p['format']) { $p['format'] } else { 'o' }
+            $val = if ($p['value']) { [datetime]::Parse($p['value']) } else { Get-Date }
+            return @{ Success = $true; Output = $val.ToString($fmt) }
+        }
+        default {
+            return @{ Success = $false; Output = "Unknown operation '$op'. Use: now, add, diff, convert, format" }
+        }
     }
+}
 
 # --- web_search ---
 Register-AgentTool -Name 'web_search' `
     -Description 'Search the web. Returns titles, snippets, and URLs.' `
     -Parameters @(
-        @{ Name = 'query'; Required = $true; Description = 'Search query' }
-        @{ Name = 'max_results'; Required = $false; Description = 'Max results (default 5)' }
-    ) `
+    @{ Name = 'query'; Required = $true; Description = 'Search query' }
+    @{ Name = 'max_results'; Required = $false; Description = 'Max results (default 5)' }
+) `
     -Execute {
-        param($p)
-        $max = if ($p['max_results']) { [int]$p['max_results'] } else { 5 }
-        if (Get-Command Invoke-WebSearch -ErrorAction SilentlyContinue) {
-            $result = Invoke-WebSearch -Query $p['query'] -MaxResults $max
-            if ($result.Success) {
-                $output = "Results for '$($p['query'])':`n"
-                $i = 1
-                foreach ($r in $result.Results) {
-                    $output += "$i. $($r.Title)`n   $($r.Snippet)`n   $($r.Url)`n"
-                    $i++
-                }
-                return @{ Success = $true; Output = $output; Results = $result.Results }
+    param($p)
+    $max = if ($p['max_results']) { [int]$p['max_results'] } else { 5 }
+    if (Get-Command Invoke-WebSearch -ErrorAction SilentlyContinue) {
+        $result = Invoke-WebSearch -Query $p['query'] -MaxResults $max
+        if ($result.Success) {
+            $output = "Results for '$($p['query'])':`n"
+            $i = 1
+            foreach ($r in $result.Results) {
+                $output += "$i. $($r.Title)`n   $($r.Snippet)`n   $($r.Url)`n"
+                $i++
             }
-            return @{ Success = $false; Output = $result.Message }
+            return @{ Success = $true; Output = $output; Results = $result.Results }
         }
-        return @{ Success = $false; Output = "WebTools not loaded" }
+        return @{ Success = $false; Output = $result.Message }
     }
+    return @{ Success = $false; Output = "WebTools not loaded" }
+}
 
 # --- fetch_url ---
 Register-AgentTool -Name 'fetch_url' `
     -Description 'Fetch and extract text content from a web page.' `
     -Parameters @(
-        @{ Name = 'url'; Required = $true; Description = 'URL to fetch' }
-        @{ Name = 'max_length'; Required = $false; Description = 'Max chars to return (default 3000)' }
-    ) `
+    @{ Name = 'url'; Required = $true; Description = 'URL to fetch' }
+    @{ Name = 'max_length'; Required = $false; Description = 'Max chars to return (default 3000)' }
+) `
     -Execute {
-        param($p)
-        $max = if ($p['max_length']) { [int]$p['max_length'] } else { 3000 }
-        if (Get-Command Get-WebPageContent -ErrorAction SilentlyContinue) {
-            $result = Get-WebPageContent -Url $p['url'] -MaxLength $max
-            if ($result.Success) {
-                return @{ Success = $true; Output = $result.Content; Length = $result.Length }
-            }
-            return @{ Success = $false; Output = $result.Message }
+    param($p)
+    $max = if ($p['max_length']) { [int]$p['max_length'] } else { 3000 }
+    if (Get-Command Get-WebPageContent -ErrorAction SilentlyContinue) {
+        $result = Get-WebPageContent -Url $p['url'] -MaxLength $max
+        if ($result.Success) {
+            return @{ Success = $true; Output = $result.Content; Length = $result.Length }
         }
-        return @{ Success = $false; Output = "WebTools not loaded" }
+        return @{ Success = $false; Output = $result.Message }
     }
+    return @{ Success = $false; Output = "WebTools not loaded" }
+}
 
 # --- wikipedia ---
 Register-AgentTool -Name 'wikipedia' `
     -Description 'Search Wikipedia and return article summaries.' `
     -Parameters @(
-        @{ Name = 'query'; Required = $true; Description = 'Topic to search' }
-    ) `
+    @{ Name = 'query'; Required = $true; Description = 'Topic to search' }
+) `
     -Execute {
-        param($p)
-        if (Get-Command Search-Wikipedia -ErrorAction SilentlyContinue) {
-            $result = Search-Wikipedia -Query $p['query']
-            if ($result.Success -and $result.Results.Count -gt 0) {
-                $output = ""
-                foreach ($r in $result.Results) {
-                    $output += "$($r.Title)`n"
-                    if ($r.FullSummary) { $output += "$($r.FullSummary)`n" }
-                    elseif ($r.Summary) { $output += "$($r.Summary)`n" }
-                    $output += "URL: $($r.Url)`n`n"
-                }
-                return @{ Success = $true; Output = $output.Trim() }
+    param($p)
+    if (Get-Command Search-Wikipedia -ErrorAction SilentlyContinue) {
+        $result = Search-Wikipedia -Query $p['query']
+        if ($result.Success -and $result.Results.Count -gt 0) {
+            $output = ""
+            foreach ($r in $result.Results) {
+                $output += "$($r.Title)`n"
+                if ($r.FullSummary) { $output += "$($r.FullSummary)`n" }
+                elseif ($r.Summary) { $output += "$($r.Summary)`n" }
+                $output += "URL: $($r.Url)`n`n"
             }
-            return @{ Success = $false; Output = "No Wikipedia results for '$($p['query'])'" }
+            return @{ Success = $true; Output = $output.Trim() }
         }
-        return @{ Success = $false; Output = "WebTools not loaded" }
+        return @{ Success = $false; Output = "No Wikipedia results for '$($p['query'])'" }
     }
+    return @{ Success = $false; Output = "WebTools not loaded" }
+}
 
 # --- stock_quote ---
 Register-AgentTool -Name 'stock_quote' `
     -Description 'Get current stock price, change, and volume for a ticker symbol.' `
     -Parameters @(
-        @{ Name = 'symbol'; Required = $true; Description = 'Stock ticker symbol, e.g. AAPL, MSFT, TSLA' }
-    ) `
+    @{ Name = 'symbol'; Required = $true; Description = 'Stock ticker symbol, e.g. AAPL, MSFT, TSLA' }
+) `
     -Execute {
-        param($p)
-        $symbol = $p['symbol'].ToUpper().Trim()
-        try {
-            $url = "https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d" + "&range=1d"
-            $headers = @{ 'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-            $response = Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 10
-            $meta = $response.chart.result[0].meta
-            $price = $meta.regularMarketPrice
-            $prevClose = $meta.chartPreviousClose
-            $change = [math]::Round($price - $prevClose, 2)
-            $changePct = [math]::Round(($change / $prevClose) * 100, 2)
-            $sign = if ($change -ge 0) { '+' } else { '' }
-            $currency = $meta.currency
-            $name = $meta.shortName
-            if (-not $name) { $name = $symbol }
-            $volume = $meta.regularMarketVolume
-            $volStr = if ($volume -gt 1000000) { "$([math]::Round($volume/1000000, 1))M" } elseif ($volume -gt 1000) { "$([math]::Round($volume/1000, 0))K" } else { "$volume" }
-            $output = "$name ($symbol): $currency $price (${sign}$change, ${sign}$changePct%) | Vol: $volStr"
-            return @{
-                Success = $true
-                Output  = $output
-                Price   = $price
-                Change  = $change
-                Percent = $changePct
-                Volume  = $volume
-                Symbol  = $symbol
-            }
-        }
-        catch {
-            return @{ Success = $false; Output = "Failed to fetch quote for '$symbol': $($_.Exception.Message)" }
+    param($p)
+    $symbol = $p['symbol'].ToUpper().Trim()
+    try {
+        $url = "https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d" + "&range=1d"
+        $headers = @{ 'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+        $response = Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 10
+        $meta = $response.chart.result[0].meta
+        $price = $meta.regularMarketPrice
+        $prevClose = $meta.chartPreviousClose
+        $change = [math]::Round($price - $prevClose, 2)
+        $changePct = [math]::Round(($change / $prevClose) * 100, 2)
+        $sign = if ($change -ge 0) { '+' } else { '' }
+        $currency = $meta.currency
+        $name = $meta.shortName
+        if (-not $name) { $name = $symbol }
+        $volume = $meta.regularMarketVolume
+        $volStr = if ($volume -gt 1000000) { "$([math]::Round($volume/1000000, 1))M" } elseif ($volume -gt 1000) { "$([math]::Round($volume/1000, 0))K" } else { "$volume" }
+        $output = "$name ($symbol): $currency $price (${sign}$change, ${sign}$changePct%) | Vol: $volStr"
+        return @{
+            Success = $true
+            Output  = $output
+            Price   = $price
+            Change  = $change
+            Percent = $changePct
+            Volume  = $volume
+            Symbol  = $symbol
         }
     }
+    catch {
+        return @{ Success = $false; Output = "Failed to fetch quote for '$symbol': $($_.Exception.Message)" }
+    }
+}
 
 # --- json_parse ---
 Register-AgentTool -Name 'json_parse' `
     -Description 'Parse JSON text and optionally extract a value by dot-path.' `
     -Parameters @(
-        @{ Name = 'json'; Required = $true; Description = 'JSON string to parse' }
-        @{ Name = 'path'; Required = $false; Description = 'Dot-notation path, e.g. "data.items[0].name"' }
-    ) `
+    @{ Name = 'json'; Required = $true; Description = 'JSON string to parse' }
+    @{ Name = 'path'; Required = $false; Description = 'Dot-notation path, e.g. "data.items[0].name"' }
+) `
     -Execute {
-        param($p)
-        try {
-            $obj = $p['json'] | ConvertFrom-Json
-            if ($p['path']) {
-                $value = $obj
-                foreach ($segment in ($p['path'] -split '\.')) {
-                    if ($segment -match '^(\w+)\[(\d+)\]$') {
-                        $value = $value.($Matches[1])[$Matches[2]]
-                    }
-                    else {
-                        $value = $value.$segment
-                    }
+    param($p)
+    try {
+        $obj = $p['json'] | ConvertFrom-Json
+        if ($p['path']) {
+            $value = $obj
+            foreach ($segment in ($p['path'] -split '\.')) {
+                if ($segment -match '^(\w+)\[(\d+)\]$') {
+                    $value = $value.($Matches[1])[$Matches[2]]
                 }
-                return @{ Success = $true; Output = ($value | ConvertTo-Json -Depth 5 -Compress); Value = $value }
+                else {
+                    $value = $value.$segment
+                }
             }
-            return @{ Success = $true; Output = ($obj | ConvertTo-Json -Depth 5); Value = $obj }
+            return @{ Success = $true; Output = ($value | ConvertTo-Json -Depth 5 -Compress); Value = $value }
         }
-        catch {
-            return @{ Success = $false; Output = "JSON parse error: $($_.Exception.Message)" }
-        }
+        return @{ Success = $true; Output = ($obj | ConvertTo-Json -Depth 5); Value = $obj }
     }
+    catch {
+        return @{ Success = $false; Output = "JSON parse error: $($_.Exception.Message)" }
+    }
+}
 
 # --- regex_match ---
 Register-AgentTool -Name 'regex_match' `
     -Description 'Test a regex pattern against text. Returns matches.' `
     -Parameters @(
-        @{ Name = 'pattern'; Required = $true; Description = 'Regex pattern' }
-        @{ Name = 'text'; Required = $true; Description = 'Text to search' }
-    ) `
+    @{ Name = 'pattern'; Required = $true; Description = 'Regex pattern' }
+    @{ Name = 'text'; Required = $true; Description = 'Text to search' }
+) `
     -Execute {
-        param($p)
-        try {
-            $regexMatches = [regex]::Matches($p['text'], $p['pattern'])
-            if ($regexMatches.Count -eq 0) {
-                return @{ Success = $true; Output = "No matches found"; MatchCount = 0 }
-            }
-            $output = "Found $($regexMatches.Count) match(es):`n"
-            $i = 1
-            foreach ($m in $regexMatches | Select-Object -First 20) {
-                $output += "  $i. '$($m.Value)' at position $($m.Index)`n"
-                if ($m.Groups.Count -gt 1) {
-                    for ($g = 1; $g -lt $m.Groups.Count; $g++) {
-                        $output += "     Group $g`: '$($m.Groups[$g].Value)'`n"
-                    }
+    param($p)
+    try {
+        $regexMatches = [regex]::Matches($p['text'], $p['pattern'])
+        if ($regexMatches.Count -eq 0) {
+            return @{ Success = $true; Output = "No matches found"; MatchCount = 0 }
+        }
+        $output = "Found $($regexMatches.Count) match(es):`n"
+        $i = 1
+        foreach ($m in $regexMatches | Select-Object -First 20) {
+            $output += "  $i. '$($m.Value)' at position $($m.Index)`n"
+            if ($m.Groups.Count -gt 1) {
+                for ($g = 1; $g -lt $m.Groups.Count; $g++) {
+                    $output += "     Group $g`: '$($m.Groups[$g].Value)'`n"
                 }
-                $i++
             }
-            return @{ Success = $true; Output = $output.Trim(); MatchCount = $regexMatches.Count }
+            $i++
         }
-        catch {
-            return @{ Success = $false; Output = "Regex error: $($_.Exception.Message)" }
-        }
+        return @{ Success = $true; Output = $output.Trim(); MatchCount = $regexMatches.Count }
     }
+    catch {
+        return @{ Success = $false; Output = "Regex error: $($_.Exception.Message)" }
+    }
+}
 
 # --- read_file (lightweight, no intent overhead) ---
 Register-AgentTool -Name 'read_file' `
     -Description 'Read contents of a local text file.' `
     -Parameters @(
-        @{ Name = 'path'; Required = $true; Description = 'File path' }
-        @{ Name = 'max_lines'; Required = $false; Description = 'Max lines to read (default 100)' }
-    ) `
+    @{ Name = 'path'; Required = $true; Description = 'File path' }
+    @{ Name = 'max_lines'; Required = $false; Description = 'Max lines to read (default 100)' }
+) `
     -Execute {
-        param($p)
-        $path = $p['path']
-        # Security: validate path is within allowed roots
-        if (Get-Command Test-PathAllowed -ErrorAction SilentlyContinue) {
-            $validation = Test-PathAllowed -Path $path
-            if (-not $validation.Success) {
-                return @{ Success = $false; Output = "Security: $($validation.Message)" }
-            }
-            $path = $validation.Path
+    param($p)
+    $path = $p['path']
+    # Security: validate path is within allowed roots
+    if (Get-Command Test-PathAllowed -ErrorAction SilentlyContinue) {
+        $validation = Test-PathAllowed -Path $path
+        if (-not $validation.Success) {
+            return @{ Success = $false; Output = "Security: $($validation.Message)" }
         }
-        if (-not (Test-Path $path)) {
-            return @{ Success = $false; Output = "File not found: $path" }
-        }
-        $maxLines = if ($p['max_lines']) { [int]$p['max_lines'] } else { 100 }
-        try {
-            $content = Get-Content $path -TotalCount $maxLines -ErrorAction Stop
-            $totalLines = (Get-Content $path | Measure-Object -Line).Lines
-            $text = $content -join "`n"
-            $shown = [math]::Min($maxLines, $totalLines)
-            return @{ Success = $true; Output = $text; LinesShown = $shown; TotalLines = $totalLines }
-        }
-        catch {
-            return @{ Success = $false; Output = "Read error: $($_.Exception.Message)" }
-        }
+        $path = $validation.Path
     }
+    if (-not (Test-Path $path)) {
+        return @{ Success = $false; Output = "File not found: $path" }
+    }
+    $maxLines = if ($p['max_lines']) { [int]$p['max_lines'] } else { 100 }
+    try {
+        $content = Get-Content $path -TotalCount $maxLines -ErrorAction Stop
+        $totalLines = (Get-Content $path | Measure-Object -Line).Lines
+        $text = $content -join "`n"
+        $shown = [math]::Min($maxLines, $totalLines)
+        return @{ Success = $true; Output = $text; LinesShown = $shown; TotalLines = $totalLines }
+    }
+    catch {
+        return @{ Success = $false; Output = "Read error: $($_.Exception.Message)" }
+    }
+}
 
 # --- shell (gated through safety system) ---
 Register-AgentTool -Name 'shell' `
     -Description 'Execute a PowerShell command. Only commands in the safe actions list are allowed.' `
     -Parameters @(
-        @{ Name = 'command'; Required = $true; Description = 'PowerShell command to execute' }
-    ) `
+    @{ Name = 'command'; Required = $true; Description = 'PowerShell command to execute' }
+) `
     -Execute {
-        param($p)
-        $cmd = $p['command']
-        # Gate through safety system
-        if (Get-Command Test-PowerShellCommand -ErrorAction SilentlyContinue) {
-            $validation = Test-PowerShellCommand $cmd
-            if (-not $validation.IsValid) {
-                return @{ Success = $false; Output = "Command '$cmd' is not in the safe actions list" }
-            }
+    param($p)
+    $cmd = $p['command']
+    # Gate through safety system
+    if (Get-Command Test-PowerShellCommand -ErrorAction SilentlyContinue) {
+        $validation = Test-PowerShellCommand $cmd
+        if (-not $validation.IsValid) {
+            return @{ Success = $false; Output = "Command '$cmd' is not in the safe actions list" }
         }
-        if (Get-Command Invoke-AIExec -ErrorAction SilentlyContinue) {
-            $result = Invoke-AIExec -Command $cmd -RequestSource "AgentTool"
-            return @{ Success = $result.Success; Output = $result.Output }
-        }
-        return @{ Success = $false; Output = "Safety system not loaded" }
     }
+    if (Get-Command Invoke-AIExec -ErrorAction SilentlyContinue) {
+        $result = Invoke-AIExec -Command $cmd -RequestSource "AgentTool"
+        return @{ Success = $result.Success; Output = $result.Output }
+    }
+    return @{ Success = $false; Output = "Safety system not loaded" }
+}
 
 # --- store (working memory) ---
 Register-AgentTool -Name 'store' `
     -Description 'Store a named value in agent working memory for later use.' `
     -Parameters @(
-        @{ Name = 'key'; Required = $true; Description = 'Name for the stored value' }
-        @{ Name = 'value'; Required = $true; Description = 'Value to store' }
-    ) `
+    @{ Name = 'key'; Required = $true; Description = 'Name for the stored value' }
+    @{ Name = 'value'; Required = $true; Description = 'Value to store' }
+) `
     -Execute {
-        param($p)
-        $global:AgentMemory[$p['key']] = $p['value']
-        return @{ Success = $true; Output = "Stored '$($p['key'])' = $($p['value'])" }
-    }
+    param($p)
+    $global:AgentMemory[$p['key']] = $p['value']
+    return @{ Success = $true; Output = "Stored '$($p['key'])' = $($p['value'])" }
+}
 
 # --- recall (working memory) ---
 Register-AgentTool -Name 'recall' `
     -Description 'Retrieve a value from agent working memory.' `
     -Parameters @(
-        @{ Name = 'key'; Required = $true; Description = 'Name of the stored value' }
-    ) `
+    @{ Name = 'key'; Required = $true; Description = 'Name of the stored value' }
+) `
     -Execute {
-        param($p)
-        $key = $p['key']
-        if ($global:AgentMemory.ContainsKey($key)) {
-            return @{ Success = $true; Output = $global:AgentMemory[$key]; Value = $global:AgentMemory[$key] }
-        }
-        $available = if ($global:AgentMemory.Count -gt 0) { $global:AgentMemory.Keys -join ', ' } else { '(empty)' }
-        return @{ Success = $false; Output = "Key '$key' not found in memory. Available: $available" }
+    param($p)
+    $key = $p['key']
+    if ($global:AgentMemory.ContainsKey($key)) {
+        return @{ Success = $true; Output = $global:AgentMemory[$key]; Value = $global:AgentMemory[$key] }
     }
+    $available = if ($global:AgentMemory.Count -gt 0) { $global:AgentMemory.Keys -join ', ' } else { '(empty)' }
+    return @{ Success = $false; Output = "Key '$key' not found in memory. Available: $available" }
+}
 
 # --- screenshot (vision) ---
 Register-AgentTool -Name 'screenshot' `
     -Description 'Capture a screenshot and describe what is on screen using a vision model.' `
     -Parameters @(
-        @{ Name = 'prompt'; Required = $false; Description = 'What to look for or ask about the screen (default: describe the screen)' }
-        @{ Name = 'full'; Required = $false; Description = 'Set to "true" to send at full resolution (for dense text/spreadsheets)' }
-    ) `
+    @{ Name = 'prompt'; Required = $false; Description = 'What to look for or ask about the screen (default: describe the screen)' }
+    @{ Name = 'full'; Required = $false; Description = 'Set to "true" to send at full resolution (for dense text/spreadsheets)' }
+) `
     -Execute {
-        param($p)
-        if (-not (Get-Command Capture-Screenshot -ErrorAction SilentlyContinue)) {
-            return @{ Success = $false; Output = 'VisionTools module not loaded' }
-        }
-        if (-not (Get-Command Send-ImageToAI -ErrorAction SilentlyContinue)) {
-            return @{ Success = $false; Output = 'VisionTools module not loaded' }
-        }
-
-        $prompt = if ($p['prompt']) { $p['prompt'] } else { 'Describe what you see on this screen. Note any open applications, windows, and content visible.' }
-        $fullRes = $p['full'] -eq 'true'
-
-        $capture = Capture-Screenshot -FullResolution:$fullRes
-        if (-not $capture.Success) {
-            return @{ Success = $false; Output = "Screenshot failed: $($capture.Output)" }
-        }
-
-        $result = Send-ImageToAI -ImagePath $capture.Path -Prompt $prompt -FullResolution:$fullRes
-        Remove-Item $capture.Path -Force -ErrorAction SilentlyContinue
-
-        if ($result.Success) {
-            return @{ Success = $true; Output = $result.Output }
-        }
-        else {
-            return @{ Success = $false; Output = $result.Output }
-        }
+    param($p)
+    if (-not (Get-Command Capture-Screenshot -ErrorAction SilentlyContinue)) {
+        return @{ Success = $false; Output = 'VisionTools module not loaded' }
     }
+    if (-not (Get-Command Send-ImageToAI -ErrorAction SilentlyContinue)) {
+        return @{ Success = $false; Output = 'VisionTools module not loaded' }
+    }
+
+    $prompt = if ($p['prompt']) { $p['prompt'] } else { 'Describe what you see on this screen. Note any open applications, windows, and content visible.' }
+    $fullRes = $p['full'] -eq 'true'
+
+    $capture = Capture-Screenshot -FullResolution:$fullRes
+    if (-not $capture.Success) {
+        return @{ Success = $false; Output = "Screenshot failed: $($capture.Output)" }
+    }
+
+    $result = Send-ImageToAI -ImagePath $capture.Path -Prompt $prompt -FullResolution:$fullRes
+    Remove-Item $capture.Path -Force -ErrorAction SilentlyContinue
+
+    if ($result.Success) {
+        return @{ Success = $true; Output = $result.Output }
+    }
+    else {
+        return @{ Success = $false; Output = $result.Output }
+    }
+}
 
 # --- ocr (text extraction from images/PDFs) ---
 Register-AgentTool -Name 'ocr' `
     -Description 'Extract text from an image or PDF file using Tesseract OCR.' `
     -Parameters @(
-        @{ Name = 'path'; Required = $true; Description = 'Path to the image or PDF file' }
-        @{ Name = 'language'; Required = $false; Description = 'Tesseract language code (default: eng)' }
-    ) `
+    @{ Name = 'path'; Required = $true; Description = 'Path to the image or PDF file' }
+    @{ Name = 'language'; Required = $false; Description = 'Tesseract language code (default: eng)' }
+) `
     -Execute {
-        param($p)
-        $filePath = $p['path']
-        if (-not $filePath) {
-            return @{ Success = $false; Output = 'path parameter is required' }
-        }
-        if (-not (Test-Path $filePath)) {
-            return @{ Success = $false; Output = "File not found: $filePath" }
-        }
-        $lang = if ($p['language']) { $p['language'] } else { 'eng' }
-        $ext = [System.IO.Path]::GetExtension($filePath).ToLower()
-        if ($ext -eq '.pdf') {
-            if (Get-Command ConvertFrom-PDF -ErrorAction SilentlyContinue) {
-                return ConvertFrom-PDF -PdfPath $filePath -Language $lang
-            }
-            return @{ Success = $false; Output = 'OCRTools module not loaded' }
-        }
-        if (Get-Command Invoke-OCR -ErrorAction SilentlyContinue) {
-            return Invoke-OCR -ImagePath $filePath -Language $lang
+    param($p)
+    $filePath = $p['path']
+    if (-not $filePath) {
+        return @{ Success = $false; Output = 'path parameter is required' }
+    }
+    if (-not (Test-Path $filePath)) {
+        return @{ Success = $false; Output = "File not found: $filePath" }
+    }
+    $lang = if ($p['language']) { $p['language'] } else { 'eng' }
+    $ext = [System.IO.Path]::GetExtension($filePath).ToLower()
+    if ($ext -eq '.pdf') {
+        if (Get-Command ConvertFrom-PDF -ErrorAction SilentlyContinue) {
+            return ConvertFrom-PDF -PdfPath $filePath -Language $lang
         }
         return @{ Success = $false; Output = 'OCRTools module not loaded' }
     }
+    if (Get-Command Invoke-OCR -ErrorAction SilentlyContinue) {
+        return Invoke-OCR -ImagePath $filePath -Language $lang
+    }
+    return @{ Success = $false; Output = 'OCRTools module not loaded' }
+}
 
 # --- build_app (prompt-to-executable) ---
 Register-AgentTool -Name 'build_app' `
     -Description 'Build a standalone Windows .exe from a natural language app description. Supports powershell (default), python-tk, python-web frameworks.' `
     -Parameters @(
-        @{ Name = 'prompt'; Required = $true; Description = 'Natural language description of the app to build' }
-        @{ Name = 'framework'; Required = $false; Description = 'powershell (default), python-tk, or python-web' }
-        @{ Name = 'name'; Required = $false; Description = 'App name for the executable' }
-    ) `
+    @{ Name = 'prompt'; Required = $true; Description = 'Natural language description of the app to build' }
+    @{ Name = 'framework'; Required = $false; Description = 'powershell (default), python-tk, or python-web' }
+    @{ Name = 'name'; Required = $false; Description = 'App name for the executable' }
+) `
     -Execute {
-        param($p)
-        $prompt = $p['prompt']
-        if (-not $prompt) {
-            return @{ Success = $false; Output = 'prompt parameter is required' }
-        }
-        if (-not (Get-Command New-AppBuild -ErrorAction SilentlyContinue)) {
-            return @{ Success = $false; Output = 'AppBuilder module not loaded' }
-        }
-        $buildParams = @{ Prompt = $prompt }
-        if ($p['framework']) { $buildParams.Framework = $p['framework'] }
-        if ($p['name']) { $buildParams.Name = $p['name'] }
-        return New-AppBuild @buildParams
+    param($p)
+    $prompt = $p['prompt']
+    if (-not $prompt) {
+        return @{ Success = $false; Output = 'prompt parameter is required' }
     }
+    if (-not (Get-Command New-AppBuild -ErrorAction SilentlyContinue)) {
+        return @{ Success = $false; Output = 'AppBuilder module not loaded' }
+    }
+    $buildParams = @{ Prompt = $prompt }
+    if ($p['framework']) { $buildParams.Framework = $p['framework'] }
+    if ($p['name']) { $buildParams.Name = $p['name'] }
+    return New-AppBuild @buildParams
+}
 
 # --- search_history (chat history FTS5 search) ---
 Register-AgentTool -Name 'search_history' `
     -Description 'Search past chat conversations using full-text search. Returns matching snippets with session names.' `
     -Parameters @(
-        @{ Name = 'query'; Required = $true; Description = 'Search term or phrase to find in chat history' }
-        @{ Name = 'limit'; Required = $false; Description = 'Max results to return (default: 10)' }
-    ) `
+    @{ Name = 'query'; Required = $true; Description = 'Search term or phrase to find in chat history' }
+    @{ Name = 'limit'; Required = $false; Description = 'Max results to return (default: 10)' }
+) `
     -Execute {
-        param($p)
-        if (-not $global:ChatDbReady -or -not (Get-Command Search-ChatFTS -ErrorAction SilentlyContinue)) {
-            return @{ Success = $false; Output = 'Chat database not available. ChatStorage module may not be loaded.' }
-        }
-        $query = $p['query']
-        if (-not $query) {
-            return @{ Success = $false; Output = 'query parameter is required' }
-        }
-        $limit = if ($p['limit']) { [int]$p['limit'] } else { 10 }
-        $results = Search-ChatFTS -Query $query -Limit $limit
-        if ($results.Count -eq 0) {
-            return @{ Success = $true; Output = "No results found for '$query'" }
-        }
-        $output = "Found $($results.Count) result(s) for '$query':`n"
-        foreach ($r in $results) {
-            $output += "`n[$($r.SessionName)] ($($r.Role)): $($r.Snippet)"
-        }
-        return @{ Success = $true; Output = $output }
+    param($p)
+    if (-not (Ensure-ChatDbReady) -or -not (Get-Command Search-ChatFTS -ErrorAction SilentlyContinue)) {
+        return @{ Success = $false; Output = 'Chat database not available. ChatStorage module may not be loaded.' }
     }
+    $query = $p['query']
+    if (-not $query) {
+        return @{ Success = $false; Output = 'query parameter is required' }
+    }
+    $limit = if ($p['limit']) { [int]$p['limit'] } else { 10 }
+    $results = Search-ChatFTS -Query $query -Limit $limit
+    if ($results.Count -eq 0) {
+        return @{ Success = $true; Output = "No results found for '$query'" }
+    }
+    $output = "Found $($results.Count) result(s) for '$query':`n"
+    foreach ($r in $results) {
+        $output += "`n[$($r.SessionName)] ($($r.Role)): $($r.Snippet)"
+    }
+    return @{ Success = $true; Output = $output }
+}
 
 # --- spawn_agent (hierarchical agent orchestration) ---
 Register-AgentTool -Name 'spawn_agent' `
     -Description 'Spawn one or more sub-agents to complete focused sub-tasks. Sub-agents run autonomously and return full results. Use "parallel":"true" with a "tasks" JSON array to run multiple sub-agents concurrently.' `
     -Parameters @(
-        @{ Name = 'task'; Required = $false; Description = 'Single sub-task description (use this OR tasks, not both)' }
-        @{ Name = 'tasks'; Required = $false; Description = 'JSON array of sub-task objects: [{"task":"...","max_steps":10,"memory":"{}"},...] for parallel execution' }
-        @{ Name = 'parallel'; Required = $false; Description = 'Set to "true" to run tasks array in parallel via thread jobs (default: sequential)' }
-        @{ Name = 'max_steps'; Required = $false; Description = 'Max steps for the sub-agent (default: 10)' }
-        @{ Name = 'memory'; Required = $false; Description = 'JSON string of key-value pairs to pre-seed sub-agent memory' }
-    ) `
+    @{ Name = 'task'; Required = $false; Description = 'Single sub-task description (use this OR tasks, not both)' }
+    @{ Name = 'tasks'; Required = $false; Description = 'JSON array of sub-task objects: [{"task":"...","max_steps":10,"memory":"{}"},...] for parallel execution' }
+    @{ Name = 'parallel'; Required = $false; Description = 'Set to "true" to run tasks array in parallel via thread jobs (default: sequential)' }
+    @{ Name = 'max_steps'; Required = $false; Description = 'Max steps for the sub-agent (default: 10)' }
+    @{ Name = 'memory'; Required = $false; Description = 'JSON string of key-value pairs to pre-seed sub-agent memory' }
+) `
     -Execute {
-        param($p)
+    param($p)
 
-        # Determine execution mode: single task or multi-task
-        $singleTask = $p['task']
-        $tasksJson = $p['tasks']
-        $runParallel = $p['parallel'] -eq 'true'
+    # Determine execution mode: single task or multi-task
+    $singleTask = $p['task']
+    $tasksJson = $p['tasks']
+    $runParallel = $p['parallel'] -eq 'true'
 
-        if (-not $singleTask -and -not $tasksJson) {
-            return @{ Success = $false; Output = "Provide either 'task' (single) or 'tasks' (JSON array) parameter" }
+    if (-not $singleTask -and -not $tasksJson) {
+        return @{ Success = $false; Output = "Provide either 'task' (single) or 'tasks' (JSON array) parameter" }
+    }
+
+    # Build task list
+    $taskList = @()
+    if ($singleTask) {
+        $maxSteps = if ($p['max_steps']) { [int]$p['max_steps'] } else { 10 }
+        $seedMemory = $null
+        if ($p['memory']) {
+            try { $seedMemory = $p['memory'] | ConvertFrom-Json -AsHashtable } catch { $seedMemory = @{} }
+        }
+        $taskList += @{ Task = $singleTask; MaxSteps = $maxSteps; SeedMemory = $seedMemory }
+    }
+    else {
+        try {
+            $parsed = $tasksJson | ConvertFrom-Json
+            foreach ($t in $parsed) {
+                $ms = if ($t.max_steps) { [int]$t.max_steps } else { 10 }
+                $sm = $null
+                if ($t.memory) {
+                    try { $sm = ($t.memory | ConvertTo-Json -Compress | ConvertFrom-Json -AsHashtable) } catch { $sm = @{} }
+                }
+                $taskList += @{ Task = $t.task; MaxSteps = $ms; SeedMemory = $sm }
+            }
+        }
+        catch {
+            return @{ Success = $false; Output = "Failed to parse tasks JSON: $($_.Exception.Message). Expected: [{`"task`":`"...`"}]" }
+        }
+    }
+
+    if ($taskList.Count -eq 0) {
+        return @{ Success = $false; Output = "No tasks to execute" }
+    }
+
+    # Memory strategy based on current depth:
+    #   depth 0→1: sub-agents share parent's $global:AgentMemory (pass as -ParentMemory)
+    #   depth 1→2: sub-agents get isolated copy (pass as -Memory clone, no -ParentMemory)
+    $currentDepth = $global:AgentDepth
+    $useSharedMemory = ($currentDepth -le 1)
+
+    # --- Single task (or sequential multi-task) ---
+    if ($taskList.Count -eq 1 -or -not $runParallel) {
+        $allResults = @()
+        foreach ($taskDef in $taskList) {
+            $invokeParams = @{
+                Task        = $taskDef.Task
+                MaxSteps    = $taskDef.MaxSteps
+                Silent      = $true
+                AutoConfirm = $true
+            }
+            if ($useSharedMemory) {
+                # Depth 0→1: pass shared memory reference
+                $invokeParams.ParentMemory = $global:AgentMemory
+                if ($taskDef.SeedMemory) {
+                    foreach ($k in $taskDef.SeedMemory.Keys) {
+                        $global:AgentMemory[$k] = $taskDef.SeedMemory[$k]
+                    }
+                }
+            }
+            else {
+                # Depth 1→2: isolated copy
+                $isolated = if ($taskDef.SeedMemory) { $taskDef.SeedMemory.Clone() } else { @{} }
+                $invokeParams.Memory = $isolated
+            }
+
+            $subResult = Invoke-AgentTask @invokeParams
+
+            # Depth-2 agents: write result back to parent memory under namespaced key
+            if (-not $useSharedMemory -and $subResult.Summary) {
+                $safeKey = "subagent:" + ($taskDef.Task -replace '[^a-zA-Z0-9_]', '_').Substring(0, [math]::Min(40, $taskDef.Task.Length))
+                $global:AgentMemory[$safeKey] = $subResult.Summary
+            }
+
+            $allResults += @{
+                Task    = $taskDef.Task
+                Success = $subResult.Success
+                Summary = $subResult.Summary
+                Steps   = $subResult.StepCount
+                Time    = $subResult.TotalTime
+                Memory  = if ($subResult.Memory) { $subResult.Memory } else { @{} }
+            }
         }
 
-        # Build task list
-        $taskList = @()
-        if ($singleTask) {
-            $maxSteps = if ($p['max_steps']) { [int]$p['max_steps'] } else { 10 }
-            $seedMemory = $null
-            if ($p['memory']) {
-                try { $seedMemory = $p['memory'] | ConvertFrom-Json -AsHashtable } catch { $seedMemory = @{} }
-            }
-            $taskList += @{ Task = $singleTask; MaxSteps = $maxSteps; SeedMemory = $seedMemory }
+        if ($allResults.Count -eq 1) {
+            $r = $allResults[0]
+            $output = "Sub-agent result for '$($r.Task)':`nSuccess: $($r.Success)`nSteps: $($r.Steps) | Time: $($r.Time)s`nSummary: $($r.Summary)"
+            return @{ Success = $r.Success; Output = $output }
         }
         else {
-            try {
-                $parsed = $tasksJson | ConvertFrom-Json
-                foreach ($t in $parsed) {
-                    $ms = if ($t.max_steps) { [int]$t.max_steps } else { 10 }
-                    $sm = $null
-                    if ($t.memory) {
-                        try { $sm = ($t.memory | ConvertTo-Json -Compress | ConvertFrom-Json -AsHashtable) } catch { $sm = @{} }
-                    }
-                    $taskList += @{ Task = $t.task; MaxSteps = $ms; SeedMemory = $sm }
-                }
+            $output = "Sequential sub-agent results ($($allResults.Count) tasks):`n"
+            $i = 1
+            foreach ($r in $allResults) {
+                $icon = if ($r.Success) { 'OK' } else { 'FAIL' }
+                $output += "`n$i. [$icon] $($r.Task)`n   Summary: $($r.Summary)`n   Steps: $($r.Steps) | Time: $($r.Time)s`n"
+                $i++
             }
-            catch {
-                return @{ Success = $false; Output = "Failed to parse tasks JSON: $($_.Exception.Message). Expected: [{`"task`":`"...`"}]" }
-            }
+            $allSuccess = ($allResults | Where-Object { -not $_.Success }).Count -eq 0
+            return @{ Success = $allSuccess; Output = $output }
         }
-
-        if ($taskList.Count -eq 0) {
-            return @{ Success = $false; Output = "No tasks to execute" }
-        }
-
-        # Memory strategy based on current depth:
-        #   depth 0→1: sub-agents share parent's $global:AgentMemory (pass as -ParentMemory)
-        #   depth 1→2: sub-agents get isolated copy (pass as -Memory clone, no -ParentMemory)
-        $currentDepth = $global:AgentDepth
-        $useSharedMemory = ($currentDepth -le 1)
-
-        # --- Single task (or sequential multi-task) ---
-        if ($taskList.Count -eq 1 -or -not $runParallel) {
-            $allResults = @()
-            foreach ($taskDef in $taskList) {
-                $invokeParams = @{
-                    Task        = $taskDef.Task
-                    MaxSteps    = $taskDef.MaxSteps
-                    Silent      = $true
-                    AutoConfirm = $true
-                }
-                if ($useSharedMemory) {
-                    # Depth 0→1: pass shared memory reference
-                    $invokeParams.ParentMemory = $global:AgentMemory
-                    if ($taskDef.SeedMemory) {
-                        foreach ($k in $taskDef.SeedMemory.Keys) {
-                            $global:AgentMemory[$k] = $taskDef.SeedMemory[$k]
-                        }
-                    }
-                }
-                else {
-                    # Depth 1→2: isolated copy
-                    $isolated = if ($taskDef.SeedMemory) { $taskDef.SeedMemory.Clone() } else { @{} }
-                    $invokeParams.Memory = $isolated
-                }
-
-                $subResult = Invoke-AgentTask @invokeParams
-
-                # Depth-2 agents: write result back to parent memory under namespaced key
-                if (-not $useSharedMemory -and $subResult.Summary) {
-                    $safeKey = "subagent:" + ($taskDef.Task -replace '[^a-zA-Z0-9_]', '_').Substring(0, [math]::Min(40, $taskDef.Task.Length))
-                    $global:AgentMemory[$safeKey] = $subResult.Summary
-                }
-
-                $allResults += @{
-                    Task    = $taskDef.Task
-                    Success = $subResult.Success
-                    Summary = $subResult.Summary
-                    Steps   = $subResult.StepCount
-                    Time    = $subResult.TotalTime
-                    Memory  = if ($subResult.Memory) { $subResult.Memory } else { @{} }
-                }
-            }
-
-            if ($allResults.Count -eq 1) {
-                $r = $allResults[0]
-                $output = "Sub-agent result for '$($r.Task)':`nSuccess: $($r.Success)`nSteps: $($r.Steps) | Time: $($r.Time)s`nSummary: $($r.Summary)"
-                return @{ Success = $r.Success; Output = $output }
-            }
-            else {
-                $output = "Sequential sub-agent results ($($allResults.Count) tasks):`n"
-                $i = 1
-                foreach ($r in $allResults) {
-                    $icon = if ($r.Success) { 'OK' } else { 'FAIL' }
-                    $output += "`n$i. [$icon] $($r.Task)`n   Summary: $($r.Summary)`n   Steps: $($r.Steps) | Time: $($r.Time)s`n"
-                    $i++
-                }
-                $allSuccess = ($allResults | Where-Object { -not $_.Success }).Count -eq 0
-                return @{ Success = $allSuccess; Output = $output }
-            }
-        }
-
-        # --- Parallel multi-task via Start-ThreadJob ---
-        # Each parallel job gets isolated memory — no shared state, no race conditions.
-        # Results are merged on completion.
-        $jobs = @()
-        foreach ($taskDef in $taskList) {
-            $taskStr = $taskDef.Task
-            $taskMaxSteps = $taskDef.MaxSteps
-            $taskSeedMemory = if ($taskDef.SeedMemory) { $taskDef.SeedMemory.Clone() } else { @{} }
-
-            # Thread jobs share the process and loaded modules but NOT variable scope.
-            # We pass everything as arguments. $global:AgentDepth will be visible since
-            # it's global, and the finally block in Invoke-AgentTask handles decrement.
-            $job = Start-ThreadJob -ScriptBlock {
-                param($t, $ms, $mem)
-                $result = Invoke-AgentTask -Task $t -MaxSteps $ms -Memory $mem -Silent -AutoConfirm
-                return @{
-                    Task    = $t
-                    Success = $result.Success
-                    Summary = $result.Summary
-                    Steps   = $result.StepCount
-                    Time    = $result.TotalTime
-                    Memory  = if ($result.Memory) { $result.Memory } else { @{} }
-                }
-            } -ArgumentList $taskStr, $taskMaxSteps, $taskSeedMemory
-
-            $jobs += @{ Job = $job; Task = $taskStr }
-        }
-
-        # Wait for all jobs to complete
-        $jobResults = @()
-        foreach ($j in $jobs) {
-            $j.Job | Wait-Job | Out-Null
-            $jobOutput = Receive-Job -Job $j.Job
-            Remove-Job -Job $j.Job -Force -ErrorAction SilentlyContinue
-
-            if ($jobOutput -and $jobOutput.Task) {
-                $jobResults += $jobOutput
-                # Write namespaced result back to parent memory
-                $safeKey = "subagent:" + ($j.Task -replace '[^a-zA-Z0-9_]', '_').Substring(0, [math]::Min(40, $j.Task.Length))
-                $global:AgentMemory[$safeKey] = $jobOutput.Summary
-            }
-            else {
-                $jobResults += @{
-                    Task    = $j.Task
-                    Success = $false
-                    Summary = "Job returned no output"
-                    Steps   = 0
-                    Time    = 0
-                    Memory  = @{}
-                }
-            }
-        }
-
-        # Format combined results
-        $output = "Parallel sub-agent results ($($jobResults.Count) tasks):`n"
-        $i = 1
-        foreach ($r in $jobResults) {
-            $icon = if ($r.Success) { 'OK' } else { 'FAIL' }
-            $output += "`n$i. [$icon] $($r.Task)`n   Summary: $($r.Summary)`n   Steps: $($r.Steps) | Time: $($r.Time)s`n"
-            $i++
-        }
-        $allSuccess = ($jobResults | Where-Object { -not $_.Success }).Count -eq 0
-        return @{ Success = $allSuccess; Output = $output }
     }
+
+    # --- Parallel multi-task via Start-ThreadJob ---
+    # Each parallel job gets isolated memory — no shared state, no race conditions.
+    # Results are merged on completion.
+    $jobs = @()
+    foreach ($taskDef in $taskList) {
+        $taskStr = $taskDef.Task
+        $taskMaxSteps = $taskDef.MaxSteps
+        $taskSeedMemory = if ($taskDef.SeedMemory) { $taskDef.SeedMemory.Clone() } else { @{} }
+
+        # Thread jobs share the process and loaded modules but NOT variable scope.
+        # We pass everything as arguments. $global:AgentDepth will be visible since
+        # it's global, and the finally block in Invoke-AgentTask handles decrement.
+        $job = Start-ThreadJob -ScriptBlock {
+            param($t, $ms, $mem)
+            $result = Invoke-AgentTask -Task $t -MaxSteps $ms -Memory $mem -Silent -AutoConfirm
+            return @{
+                Task    = $t
+                Success = $result.Success
+                Summary = $result.Summary
+                Steps   = $result.StepCount
+                Time    = $result.TotalTime
+                Memory  = if ($result.Memory) { $result.Memory } else { @{} }
+            }
+        } -ArgumentList $taskStr, $taskMaxSteps, $taskSeedMemory
+
+        $jobs += @{ Job = $job; Task = $taskStr }
+    }
+
+    # Wait for all jobs to complete
+    $jobResults = @()
+    foreach ($j in $jobs) {
+        $j.Job | Wait-Job | Out-Null
+        $jobOutput = Receive-Job -Job $j.Job
+        Remove-Job -Job $j.Job -Force -ErrorAction SilentlyContinue
+
+        if ($jobOutput -and $jobOutput.Task) {
+            $jobResults += $jobOutput
+            # Write namespaced result back to parent memory
+            $safeKey = "subagent:" + ($j.Task -replace '[^a-zA-Z0-9_]', '_').Substring(0, [math]::Min(40, $j.Task.Length))
+            $global:AgentMemory[$safeKey] = $jobOutput.Summary
+        }
+        else {
+            $jobResults += @{
+                Task    = $j.Task
+                Success = $false
+                Summary = "Job returned no output"
+                Steps   = 0
+                Time    = 0
+                Memory  = @{}
+            }
+        }
+    }
+
+    # Format combined results
+    $output = "Parallel sub-agent results ($($jobResults.Count) tasks):`n"
+    $i = 1
+    foreach ($r in $jobResults) {
+        $icon = if ($r.Success) { 'OK' } else { 'FAIL' }
+        $output += "`n$i. [$icon] $($r.Task)`n   Summary: $($r.Summary)`n   Steps: $($r.Steps) | Time: $($r.Time)s`n"
+        $i++
+    }
+    $allSuccess = ($jobResults | Where-Object { -not $_.Success }).Count -eq 0
+    return @{ Success = $allSuccess; Output = $output }
+}
 
 # ===== Aliases =====
 Set-Alias agent-tools Get-AgentTools -Force

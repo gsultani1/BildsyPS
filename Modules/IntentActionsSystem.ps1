@@ -110,7 +110,10 @@ $global:IntentAliases += @{
             return $createResult
         }
         
-        Start-Sleep -Milliseconds 500
+        # Wait for file to be flushed (poll instead of fixed sleep)
+        $waited = 0; while (-not (Test-Path $createResult.Path) -and $waited -lt 500) {
+            Start-Sleep -Milliseconds 50; $waited += 50
+        }
         $openResult = & $global:IntentAliases["open_file"] $createResult.Path
         
         @{
@@ -130,7 +133,6 @@ $global:IntentAliases += @{
         # Chain: search_web -> create_docx (for notes)
         $searchResult = & $global:IntentAliases["search_web"] $topic
         
-        Start-Sleep -Milliseconds 300
         $safeTopic = $topic -replace '[<>:"/\\|?*]', '_'
         $notesName = "Research_${safeTopic}_$(Get-Date -Format 'yyyyMMdd')"
         $createResult = & $global:IntentAliases["create_docx"] $notesName
@@ -149,9 +151,7 @@ $global:IntentAliases += @{
         $results = @()
         
         $results += & $global:IntentAliases["open_browser"] "edge"
-        Start-Sleep -Milliseconds 200
         $results += & $global:IntentAliases["open_word"]
-        Start-Sleep -Milliseconds 200
         $results += & $global:IntentAliases["open_excel"]
         
         @{

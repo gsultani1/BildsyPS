@@ -2,7 +2,7 @@
 # LLM Chat session management, persistence, and the main chat loop
 
 # ===== Chat Session State =====
-$global:ChatSessionHistory = @()
+$global:ChatSessionHistory = [System.Collections.Generic.List[object]]::new()
 $global:ChatSessionName = $null       # Current session name (null = unnamed)
 $global:ChatLogsPath = "$global:BildsyPSHome\logs\sessions"
 $global:ChatSessionIndex = @{}        # In-memory index: name -> metadata
@@ -59,7 +59,7 @@ function Start-ChatSession {
     Write-Host "Type 'exit' to quit, 'clear' to reset, 'save' to archive, 'resume' to load last session, 'sessions' to browse, 'budget' for token usage, 'switch' to change provider." -ForegroundColor DarkGray
     
     # Initialize session state
-    $global:ChatSessionHistory = @()
+    $global:ChatSessionHistory = [System.Collections.Generic.List[object]]::new()
     $global:ChatSessionName = $null
     $systemPrompt = $null
     
@@ -79,10 +79,10 @@ function Start-ChatSession {
                 }
                 else {
                     # Prepend as first exchange for OpenAI-compatible
-                    $global:ChatSessionHistory = @(
-                        @{ role = "user"; content = "[Context from previous session]`n$continuePreamble" },
-                        @{ role = "assistant"; content = "I remember our previous conversation. I'm ready to continue." }
-                    ) + $global:ChatSessionHistory
+                    $global:ChatSessionHistory.InsertRange(0, [object[]]@(
+                            @{ role = "user"; content = "[Context from previous session]`n$continuePreamble" },
+                            @{ role = "assistant"; content = "I remember our previous conversation. I'm ready to continue." }
+                        ))
                 }
                 Write-Host "  Context recall: injected previous session summary" -ForegroundColor DarkCyan
             }
@@ -106,8 +106,8 @@ function Start-ChatSession {
             }
         }
         else {
-            $global:ChatSessionHistory += @{ role = "user"; content = $safeCommandsPrompt }
-            $global:ChatSessionHistory += @{ role = "assistant"; content = "Understood. I have access to PowerShell commands and intent actions. I'm ready to help." }
+            $global:ChatSessionHistory.Add(@{ role = "user"; content = $safeCommandsPrompt })
+            $global:ChatSessionHistory.Add(@{ role = "assistant"; content = "Understood. I have access to PowerShell commands and intent actions. I'm ready to help." })
         }
         Write-Host "  Safe commands context loaded." -ForegroundColor Green
     }
@@ -136,7 +136,7 @@ function Start-ChatSession {
             }
             '^clear$' { 
                 if ($global:ChatSessionHistory.Count -gt 0) { Save-Chat -Auto }
-                $global:ChatSessionHistory = @()
+                $global:ChatSessionHistory = [System.Collections.Generic.List[object]]::new()
                 $global:ChatSessionName = $null
                 Write-Host "Memory cleared (auto-saved previous)." -ForegroundColor DarkGray
                 continue 
@@ -174,7 +174,7 @@ function Start-ChatSession {
                 }
                 else {
                     $oldName = $global:ChatSessionName
-                    if ($oldName -and $global:ChatDbReady -and (Get-Command Rename-ChatSessionInDb -ErrorAction SilentlyContinue)) {
+                    if ($oldName -and (Ensure-ChatDbReady) -and (Get-Command Rename-ChatSessionInDb -ErrorAction SilentlyContinue)) {
                         Rename-ChatSessionInDb -OldName $oldName -NewName $newName | Out-Null
                     }
                     Save-Chat -Name $newName
@@ -198,7 +198,7 @@ function Start-ChatSession {
                 # Show per-category breakdown
                 $systemTokens = 0; $userTokens = 0; $assistantTokens = 0
                 foreach ($msg in $global:ChatSessionHistory) {
-                    $t = [math]::Ceiling($msg.content.Length / 4)
+                    $t = Get-EstimatedTokenCount -Text $msg.content
                     switch ($msg.role) {
                         'system' { $systemTokens += $t }
                         'user' { $userTokens += $t }
@@ -225,8 +225,8 @@ function Start-ChatSession {
                 if (Get-Command Invoke-OCRFile -ErrorAction SilentlyContinue) {
                     $ocrResult = Invoke-OCRFile -Path $ocrPath
                     if ($ocrResult -and $ocrResult.Success) {
-                        $global:ChatSessionHistory += @{ role = 'user'; content = "[OCR: extracted text from $ocrPath]" }
-                        $global:ChatSessionHistory += @{ role = 'assistant'; content = $ocrResult.Output }
+                        $global:ChatSessionHistory.Add(@{ role = 'user'; content = "[OCR: extracted text from $ocrPath]" })
+                        $global:ChatSessionHistory.Add(@{ role = 'assistant'; content = $ocrResult.Output })
                     }
                 }
                 else { Write-Host 'OCRTools module not loaded.' -ForegroundColor Red }
@@ -371,8 +371,8 @@ function Start-ChatSession {
                         }
                     }
                     if ($vResult.Success) {
-                        $global:ChatSessionHistory += @{ role = 'user'; content = '[Vision: image analyzed at full resolution]' }
-                        $global:ChatSessionHistory += @{ role = 'assistant'; content = $vResult.Output }
+                        $global:ChatSessionHistory.Add(@{ role = 'user'; content = '[Vision: image analyzed at full resolution]' })
+                        $global:ChatSessionHistory.Add(@{ role = 'assistant'; content = $vResult.Output })
                         Write-Host "`nAI>" -ForegroundColor Cyan
                         if (Get-Command Format-Markdown -ErrorAction SilentlyContinue) { Format-Markdown $vResult.Output } else { Write-Host $vResult.Output }
                     }
@@ -390,8 +390,8 @@ function Start-ChatSession {
                         $vResult = Send-ImageToAI -ImagePath $cap.Path -FullResolution -Provider $Provider -Model $Model
                         Remove-Item $cap.Path -Force -ErrorAction SilentlyContinue
                         if ($vResult.Success) {
-                            $global:ChatSessionHistory += @{ role = 'user'; content = '[Vision: screenshot analyzed at full resolution]' }
-                            $global:ChatSessionHistory += @{ role = 'assistant'; content = $vResult.Output }
+                            $global:ChatSessionHistory.Add(@{ role = 'user'; content = '[Vision: screenshot analyzed at full resolution]' })
+                            $global:ChatSessionHistory.Add(@{ role = 'assistant'; content = $vResult.Output })
                             Write-Host "`nAI>" -ForegroundColor Cyan
                             if (Get-Command Format-Markdown -ErrorAction SilentlyContinue) { Format-Markdown $vResult.Output } else { Write-Host $vResult.Output }
                         }
@@ -425,8 +425,8 @@ function Start-ChatSession {
                     }
                     if ($vResult.Success) {
                         $placeholder = if (Test-Path $visionArg) { "[Vision: analyzed $visionArg]" } else { "[Vision: screenshot -- $visionArg]" }
-                        $global:ChatSessionHistory += @{ role = 'user'; content = $placeholder }
-                        $global:ChatSessionHistory += @{ role = 'assistant'; content = $vResult.Output }
+                        $global:ChatSessionHistory.Add(@{ role = 'user'; content = $placeholder })
+                        $global:ChatSessionHistory.Add(@{ role = 'assistant'; content = $vResult.Output })
                         Write-Host "`nAI>" -ForegroundColor Cyan
                         if (Get-Command Format-Markdown -ErrorAction SilentlyContinue) { Format-Markdown $vResult.Output } else { Write-Host $vResult.Output }
                     }
@@ -445,8 +445,8 @@ function Start-ChatSession {
                         $vResult = Send-ImageToAI -ImagePath $cap.Path -Provider $Provider -Model $Model
                         Remove-Item $cap.Path -Force -ErrorAction SilentlyContinue
                         if ($vResult.Success) {
-                            $global:ChatSessionHistory += @{ role = 'user'; content = '[Vision: screenshot analyzed]' }
-                            $global:ChatSessionHistory += @{ role = 'assistant'; content = $vResult.Output }
+                            $global:ChatSessionHistory.Add(@{ role = 'user'; content = '[Vision: screenshot analyzed]' })
+                            $global:ChatSessionHistory.Add(@{ role = 'assistant'; content = $vResult.Output })
                             Write-Host "`nAI>" -ForegroundColor Cyan
                             if (Get-Command Format-Markdown -ErrorAction SilentlyContinue) { Format-Markdown $vResult.Output } else { Write-Host $vResult.Output }
                         }
@@ -462,8 +462,8 @@ function Start-ChatSession {
                 if (Get-Command Invoke-AgentTask -ErrorAction SilentlyContinue) {
                     $agentResult = Invoke-AgentTask -Task $agentTask -Provider $Provider -Model $Model -AutoConfirm
                     if ($agentResult) {
-                        $global:ChatSessionHistory += @{ role = "user"; content = "[Agent task: $agentTask]" }
-                        $global:ChatSessionHistory += @{ role = "assistant"; content = $agentResult.Summary }
+                        $global:ChatSessionHistory.Add(@{ role = "user"; content = "[Agent task: $agentTask]" })
+                        $global:ChatSessionHistory.Add(@{ role = "assistant"; content = $agentResult.Summary })
                     }
                 }
                 else {
@@ -479,8 +479,8 @@ function Start-ChatSession {
                     if ($agentTask -and $agentTask -notin @('cancel', '')) {
                         $agentResult = Invoke-AgentTask -Task $agentTask -Provider $Provider -Model $Model -AutoConfirm -Interactive
                         if ($agentResult) {
-                            $global:ChatSessionHistory += @{ role = "user"; content = "[Interactive agent session: $agentTask]" }
-                            $global:ChatSessionHistory += @{ role = "assistant"; content = $agentResult.Summary }
+                            $global:ChatSessionHistory.Add(@{ role = "user"; content = "[Interactive agent session: $agentTask]" })
+                            $global:ChatSessionHistory.Add(@{ role = "assistant"; content = $agentResult.Summary })
                         }
                     }
                 }
@@ -536,7 +536,7 @@ function Start-ChatSession {
         if (-not $continue) { break }
 
         # Don't preprocess user input - let the AI interpret naturally
-        $global:ChatSessionHistory += @{ role = "user"; content = $inputText }
+        $global:ChatSessionHistory.Add(@{ role = "user"; content = $inputText })
         
         $estimatedTokens = Get-EstimatedTokenCount
         $contextLimit = Get-ModelContextLimit -Model $Model
@@ -546,7 +546,7 @@ function Start-ChatSession {
         if ($AutoTrim -and $estimatedTokens -gt ($budget * 0.8)) {
             $trimResult = Get-TrimmedMessages -Messages $global:ChatSessionHistory -ContextLimit $contextLimit -MaxResponseTokens $MaxResponseTokens -KeepFirstN 2 -Summarize
             if ($trimResult.Trimmed) {
-                $global:ChatSessionHistory = $trimResult.Messages
+                $global:ChatSessionHistory = [System.Collections.Generic.List[object]]::new([object[]]$trimResult.Messages)
                 Write-Host "  [Auto-trimmed: $($trimResult.RemovedCount) old messages summarized, ~$($trimResult.EstimatedTokens)/$budget tokens]" -ForegroundColor DarkYellow
                 $estimatedTokens = $trimResult.EstimatedTokens
             }
@@ -574,7 +574,7 @@ function Start-ChatSession {
             $reply = $response.Content
 
             # Store AI response as-is
-            $global:ChatSessionHistory += @{ role = "assistant"; content = $reply }
+            $global:ChatSessionHistory.Add(@{ role = "assistant"; content = $reply })
 
             # Only show formatted output if not streaming (streaming already printed)
             if (-not $response.Streamed) {
@@ -606,7 +606,7 @@ function Start-ChatSession {
             
             # Remove the failed user message from history
             if ($global:ChatSessionHistory.Count -gt 0) {
-                $global:ChatSessionHistory = $global:ChatSessionHistory[0..($global:ChatSessionHistory.Count - 2)]
+                $global:ChatSessionHistory.RemoveAt($global:ChatSessionHistory.Count - 1)
             }
         }
     }
@@ -684,38 +684,41 @@ function Save-Chat {
         messageCount = $global:ChatSessionHistory.Count
     }
     
-    $session | ConvertTo-Json -Depth 10 | Set-Content $filePath -Encoding UTF8
+    # JSON fallback — only write when SQLite is unavailable
+    if (-not (Ensure-ChatDbReady)) {
+        $session | ConvertTo-Json -Depth 10 | Set-Content $filePath -Encoding UTF8
     
-    # Update index (JSON fallback)
-    $index = Read-ChatIndex
-    $index[$global:ChatSessionName] = @{
-        file     = $filename
-        savedAt  = $session.savedAt
-        messages = $session.messageCount
-        preview  = ($global:ChatSessionHistory | Where-Object { $_.role -eq 'user' } | Select-Object -First 1).content
+        # Update index (JSON fallback)
+        $index = Read-ChatIndex
+        $index[$global:ChatSessionName] = @{
+            file     = $filename
+            savedAt  = $session.savedAt
+            messages = $session.messageCount
+            preview  = ($global:ChatSessionHistory | Where-Object { $_.role -eq 'user' } | Select-Object -First 1).content
+        }
+        Write-ChatIndex $index
+    
+        # Prune logs older than 30 days (only when JSON is active)
+        Get-ChildItem $global:ChatLogsPath -Filter "*.json" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne 'index.json' -and $_.LastWriteTime -lt (Get-Date).AddDays(-30) } |
+        Remove-Item -Force -ErrorAction SilentlyContinue
     }
-    Write-ChatIndex $index
     
     # Save to SQLite (primary storage)
-    if ($global:ChatDbReady -and (Get-Command Save-ChatToDb -ErrorAction SilentlyContinue)) {
+    if ((Ensure-ChatDbReady) -and (Get-Command Save-ChatToDb -ErrorAction SilentlyContinue)) {
         Save-ChatToDb -Name $global:ChatSessionName -Messages $global:ChatSessionHistory -Provider $global:DefaultChatProvider -Model $session.model | Out-Null
     }
     
-    # Prune logs older than 30 days
-    Get-ChildItem $global:ChatLogsPath -Filter "*.json" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -ne 'index.json' -and $_.LastWriteTime -lt (Get-Date).AddDays(-30) } |
-    Remove-Item -Force -ErrorAction SilentlyContinue
-    
     if (-not $Auto) {
         Write-Host "Saved session '$($global:ChatSessionName)' ($($global:ChatSessionHistory.Count) messages)" -ForegroundColor Green
-        if (Get-Command Send-ShелixToast -ErrorAction SilentlyContinue) {
-            Send-ShелixToast -Title "Session saved" -Message "'$($global:ChatSessionName)' -- $($global:ChatSessionHistory.Count) messages" -Type Info
+        if (Get-Command Send-ShelixToast -ErrorAction SilentlyContinue) {
+            Send-ShelixToast -Title "Session saved" -Message "'$($global:ChatSessionName)' -- $($global:ChatSessionHistory.Count) messages" -Type Info
         }
     }
     else {
         # Auto-save on exit -- toast so the user knows context was preserved
-        if (Get-Command Send-ShелixToast -ErrorAction SilentlyContinue) {
-            Send-ShелixToast -Title "Session auto-saved" -Message "'$($global:ChatSessionName)' -- $($global:ChatSessionHistory.Count) messages" -Type Info
+        if (Get-Command Send-ShelixToast -ErrorAction SilentlyContinue) {
+            Send-ShelixToast -Title "Session auto-saved" -Message "'$($global:ChatSessionName)' -- $($global:ChatSessionHistory.Count) messages" -Type Info
         }
     }
     
@@ -731,10 +734,10 @@ function Resume-Chat {
     param([string]$Name)
     
     # Try SQLite first
-    if ($global:ChatDbReady -and (Get-Command Resume-ChatFromDb -ErrorAction SilentlyContinue)) {
+    if ((Ensure-ChatDbReady) -and (Get-Command Resume-ChatFromDb -ErrorAction SilentlyContinue)) {
         $dbSession = Resume-ChatFromDb -Name $Name
         if ($dbSession) {
-            $global:ChatSessionHistory = @($dbSession.Messages)
+            $global:ChatSessionHistory = [System.Collections.Generic.List[object]]::new([object[]]@($dbSession.Messages))
             $global:ChatSessionName = $dbSession.Name
             return @{
                 name     = $dbSession.Name
@@ -748,7 +751,7 @@ function Resume-Chat {
             if ($dbSessions.Count -gt 0) {
                 $dbSession = Resume-ChatFromDb -Name $dbSessions[0].Name
                 if ($dbSession) {
-                    $global:ChatSessionHistory = @($dbSession.Messages)
+                    $global:ChatSessionHistory = [System.Collections.Generic.List[object]]::new([object[]]@($dbSession.Messages))
                     $global:ChatSessionName = $dbSession.Name
                     return @{
                         name     = $dbSession.Name
@@ -764,7 +767,7 @@ function Resume-Chat {
             if ($dbSessions.Count -gt 0) {
                 $dbSession = Resume-ChatFromDb -Name $dbSessions[0].Name
                 if ($dbSession) {
-                    $global:ChatSessionHistory = @($dbSession.Messages)
+                    $global:ChatSessionHistory = [System.Collections.Generic.List[object]]::new([object[]]@($dbSession.Messages))
                     $global:ChatSessionName = $dbSession.Name
                     return @{
                         name     = $dbSession.Name
@@ -816,7 +819,7 @@ function Resume-Chat {
     }
     
     $session = Get-Content $filePath -Raw | ConvertFrom-Json
-    $global:ChatSessionHistory = @($session.messages)
+    $global:ChatSessionHistory = [System.Collections.Generic.List[object]]::new([object[]]@($session.messages))
     $global:ChatSessionName = $entry.name
     
     return $entry
@@ -830,7 +833,7 @@ function Get-ChatSessions {
     #>
 
     # Try SQLite first
-    if ($global:ChatDbReady -and (Get-Command Get-ChatSessionsFromDb -ErrorAction SilentlyContinue)) {
+    if ((Ensure-ChatDbReady) -and (Get-Command Get-ChatSessionsFromDb -ErrorAction SilentlyContinue)) {
         $dbSessions = Get-ChatSessionsFromDb -Limit 50
         if ($dbSessions.Count -gt 0) {
             Write-Host "`n===== Saved Sessions (SQLite) =====" -ForegroundColor Cyan
@@ -884,11 +887,11 @@ function Import-Chat {
         $raw = Get-Content $file -Raw | ConvertFrom-Json
         # Support both old format (array) and new envelope format
         if ($raw.messages) {
-            $global:ChatSessionHistory = @($raw.messages)
+            $global:ChatSessionHistory = [System.Collections.Generic.List[object]]::new([object[]]@($raw.messages))
             $global:ChatSessionName = $raw.name
         }
         else {
-            $global:ChatSessionHistory = @($raw)
+            $global:ChatSessionHistory = [System.Collections.Generic.List[object]]::new([object[]]@($raw))
         }
         Write-Host "Chat loaded: $file ($($global:ChatSessionHistory.Count) messages)" -ForegroundColor Cyan
     }
@@ -941,7 +944,7 @@ function Search-ChatSessions {
     param([Parameter(Mandatory = $true)][string]$Keyword)
     
     # Try FTS5 search first
-    if ($global:ChatDbReady -and (Get-Command Search-ChatFTS -ErrorAction SilentlyContinue)) {
+    if ((Ensure-ChatDbReady) -and (Get-Command Search-ChatFTS -ErrorAction SilentlyContinue)) {
         $results = Search-ChatFTS -Query $Keyword -Limit 20
         if ($results.Count -gt 0) {
             Write-Host "`nFTS5 search results for '$Keyword':" -ForegroundColor Cyan
@@ -1019,7 +1022,7 @@ function Remove-ChatSession {
     $removed = $false
 
     # Remove from SQLite
-    if ($global:ChatDbReady -and (Get-Command Remove-ChatSessionFromDb -ErrorAction SilentlyContinue)) {
+    if ((Ensure-ChatDbReady) -and (Get-Command Remove-ChatSessionFromDb -ErrorAction SilentlyContinue)) {
         if (Remove-ChatSessionFromDb -Name $Name) { $removed = $true }
     }
 
@@ -1151,7 +1154,7 @@ function Start-ChatLLM { Start-ChatSession -Provider llm -IncludeSafeCommands -A
 $_chatSessionNameCompleter = {
     param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
     $names = @()
-    if ($global:ChatDbReady -and (Get-Command Get-ChatSessionsFromDb -ErrorAction SilentlyContinue)) {
+    if ((Ensure-ChatDbReady) -and (Get-Command Get-ChatSessionsFromDb -ErrorAction SilentlyContinue)) {
         $names = @(Get-ChatSessionsFromDb -Limit 50 | ForEach-Object { $_.Name })
     }
     if ($names.Count -eq 0) {

@@ -110,14 +110,14 @@ function Invoke-Workflow {
     Write-Host "`n===== Workflow Complete =====" -ForegroundColor Cyan
     
     # Toast on workflow completion
-    if (Get-Command Send-ShелixToast -ErrorAction SilentlyContinue) {
+    if (Get-Command Send-ShelixToast -ErrorAction SilentlyContinue) {
         $allOk = ($results | Where-Object { -not $_.Success }).Count -eq 0
         if ($allOk) {
-            Send-ShелixToast -Title "Workflow complete" -Message $Name -Type Success
+            Send-ShelixToast -Title "Workflow complete" -Message $Name -Type Success
         }
         else {
             $failCount = ($results | Where-Object { -not $_.Success }).Count
-            Send-ShелixToast -Title "Workflow finished with errors" -Message "$Name — $failCount step(s) failed" -Type Warning
+            Send-ShelixToast -Title "Workflow finished with errors" -Message "$Name — $failCount step(s) failed" -Type Warning
         }
     }
     

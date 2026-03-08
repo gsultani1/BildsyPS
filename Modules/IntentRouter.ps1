@@ -218,17 +218,17 @@ function Invoke-IntentAction {
         Write-Host "[Intent-$intentId] $statusText ($([math]::Round($executionTime, 2))s)" -ForegroundColor $statusColor
         
         # Toast notification for meaningful intents (>1s or always-notify categories)
-        if (Get-Command Send-ShелixToast -ErrorAction SilentlyContinue) {
+        if (Get-Command Send-ShelixToast -ErrorAction SilentlyContinue) {
             $alwaysNotify = @('document', 'git', 'workflow', 'filesystem')
             $intentCategory = if ($meta) { $meta.Category } else { '' }
             if ($executionTime -gt 1.0 -or $intentCategory -in $alwaysNotify) {
                 $toastMsg = if ($result.Output) { $result.Output } else { "Intent: $Intent" }
                 if ($toastMsg.Length -gt 80) { $toastMsg = $toastMsg.Substring(0, 80) + '...' }
                 if ($success) {
-                    Send-ShелixToast -Title $Intent -Message $toastMsg -Type Success
+                    Send-ShelixToast -Title $Intent -Message $toastMsg -Type Success
                 }
                 else {
-                    Send-ShелixToast -Title "$Intent failed" -Message $toastMsg -Type Error
+                    Send-ShelixToast -Title "$Intent failed" -Message $toastMsg -Type Error
                 }
             }
         }

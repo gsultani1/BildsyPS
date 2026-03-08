@@ -2332,6 +2332,32 @@ pub async fn fetch_remote(state: State<'_, DbPool>) -> Result<String, AppError> 
             $result | Should -Match 'pub\s+fn\s+get_items'
             $result | Should -Match 'pub\s+async\s+fn\s+fetch_remote'
         }
+
+        It 'Cascades: removes .await from calls to de-asynced fns, then de-asyncs callers' {
+            $code = @'
+use tauri::State;
+
+#[tauri::command]
+pub async fn get_item(state: State<'_, DbPool>, id: i64) -> Result<Item, AppError> {
+    let conn = state.inner().get()?;
+    Ok(Item { id: 1 })
+}
+
+#[tauri::command]
+pub async fn add_item(state: State<'_, DbPool>, name: String) -> Result<Item, AppError> {
+    let conn = state.inner().get()?;
+    conn.execute("INSERT INTO items (name) VALUES (?1)", [&name])?;
+    let id = conn.last_insert_rowid();
+    get_item(state, id).await
+}
+'@
+            Set-Content (Join-Path $srcDir 'cascade.rs') $code -Encoding UTF8
+            Repair-TauriSource -SourceDir $script:asyncRoot
+            $result = Get-Content (Join-Path $srcDir 'cascade.rs') -Raw -Encoding UTF8
+            $result | Should -Match 'pub\s+fn\s+get_item\b'
+            $result | Should -Not -Match 'get_item\([^)]*\)\.await'
+            $result | Should -Match 'pub\s+fn\s+add_item\b'
+        }
     }
 
     Context 'Invoke-CodeGeneration — surgical file validation' {

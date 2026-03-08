@@ -50,7 +50,7 @@ function Add-AgentTask {
     param(
         [Parameter(Mandatory)][string]$Id,
         [Parameter(Mandatory)][string]$Task,
-        [ValidateSet('daily','weekly','interval')][string]$Schedule = 'daily',
+        [ValidateSet('daily', 'weekly', 'interval')][string]$Schedule = 'daily',
         [string]$Time = '08:00',
         [string]$Interval,
         [string]$Days
@@ -80,7 +80,7 @@ function Add-AgentTask {
     # Validate day names for weekly schedules
     if ($Schedule -eq 'weekly' -and $Days) {
         $validDays = @('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
-                       'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
+            'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
         $dayList = $Days -split ',' | ForEach-Object { $_.Trim() }
         foreach ($day in $dayList) {
             if ($day -notin $validDays) {
@@ -252,7 +252,8 @@ function Test-TaskDue {
             if (-not $lastRun) { return $true }
             $dayNames = if ($Task.days) {
                 $Task.days -split ',' | ForEach-Object { ConvertTo-NormalizedDayName $_.Trim() }
-            } else { @('Mon') }
+            }
+            else { @('Mon') }
             $todayName = ConvertTo-NormalizedDayName $now.DayOfWeek.ToString()
             if ($todayName -notin $dayNames) { return $false }
             $targetTime = [datetime]::Parse($Task.time)
@@ -277,7 +278,7 @@ function Initialize-HeartbeatTable {
     Create the heartbeat_runs SQLite table if it doesn't exist. Only runs once per session.
     #>
     if ($script:HeartbeatTableReady) { return $true }
-    if (-not $global:ChatDbReady) { return $false }
+    if (-not (Ensure-ChatDbReady)) { return $false }
     if (-not (Get-Command Get-ChatDbConnection -ErrorAction SilentlyContinue)) { return $false }
 
     try {
@@ -286,8 +287,6 @@ function Initialize-HeartbeatTable {
         $cmd.CommandText = "CREATE TABLE IF NOT EXISTS heartbeat_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, run_at TEXT NOT NULL DEFAULT (datetime('now')), tasks_checked INTEGER, tasks_run INTEGER, log TEXT)"
         $cmd.ExecuteNonQuery() | Out-Null
         $cmd.Dispose()
-        $conn.Close()
-        $conn.Dispose()
         $script:HeartbeatTableReady = $true
         return $true
     }
@@ -375,8 +374,6 @@ function Invoke-AgentHeartbeat {
             $cmd.Parameters.Add([Microsoft.Data.Sqlite.SqliteParameter]::new("@log", $logEntry)) | Out-Null
             $cmd.ExecuteNonQuery() | Out-Null
             $cmd.Dispose()
-            $conn.Close()
-            $conn.Dispose()
         }
         catch {
             # Non-fatal: log file is the primary record

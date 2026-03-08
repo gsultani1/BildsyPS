@@ -4,8 +4,8 @@
 # If Warp had this, they wouldn't need $73M
 
 # Session-scoped HttpClient for Anthropic — reused across calls to avoid TCP/TLS overhead
-$script:AnthropicHttpClient = $null
-$script:AnthropicHttpHandler = $null
+$global:_AnthropicHttpClient = $null
+$global:_AnthropicHttpHandler = $null
 
 # ===== Provider Configuration =====
 
@@ -476,27 +476,27 @@ function Invoke-AnthropicChat {
     $lastError = $null
 
     # Reuse session-scoped HttpClient to avoid TCP/TLS overhead on consecutive calls
-    if ($null -eq $script:AnthropicHttpClient) {
+    if ($null -eq $global:_AnthropicHttpClient) {
         try {
-            $script:AnthropicHttpHandler = [System.Net.Http.SocketsHttpHandler]::new()
-            $script:AnthropicHttpHandler.AutomaticDecompression = [System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate
-            $script:AnthropicHttpHandler.PooledConnectionLifetime = [TimeSpan]::FromMinutes(15)
-            $script:AnthropicHttpHandler.PooledConnectionIdleTimeout = [TimeSpan]::FromMinutes(10)
-            $script:AnthropicHttpHandler.KeepAlivePingPolicy = [System.Net.Http.HttpKeepAlivePingPolicy]::WithActiveRequests
-            $script:AnthropicHttpHandler.KeepAlivePingDelay = [TimeSpan]::FromSeconds(15)
-            $script:AnthropicHttpHandler.KeepAlivePingTimeout = [TimeSpan]::FromSeconds(10)
+            $global:_AnthropicHttpHandler = [System.Net.Http.SocketsHttpHandler]::new()
+            $global:_AnthropicHttpHandler.AutomaticDecompression = [System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate
+            $global:_AnthropicHttpHandler.PooledConnectionLifetime = [TimeSpan]::FromMinutes(15)
+            $global:_AnthropicHttpHandler.PooledConnectionIdleTimeout = [TimeSpan]::FromMinutes(10)
+            $global:_AnthropicHttpHandler.KeepAlivePingPolicy = [System.Net.Http.HttpKeepAlivePingPolicy]::WithActiveRequests
+            $global:_AnthropicHttpHandler.KeepAlivePingDelay = [TimeSpan]::FromSeconds(15)
+            $global:_AnthropicHttpHandler.KeepAlivePingTimeout = [TimeSpan]::FromSeconds(10)
         }
         catch {
-            if ($script:AnthropicHttpHandler) { $script:AnthropicHttpHandler.Dispose(); $script:AnthropicHttpHandler = $null }
-            $script:AnthropicHttpHandler = [System.Net.Http.HttpClientHandler]::new()
-            $script:AnthropicHttpHandler.AutomaticDecompression = [System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate
+            if ($global:_AnthropicHttpHandler) { $global:_AnthropicHttpHandler.Dispose(); $global:_AnthropicHttpHandler = $null }
+            $global:_AnthropicHttpHandler = [System.Net.Http.HttpClientHandler]::new()
+            $global:_AnthropicHttpHandler.AutomaticDecompression = [System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate
         }
-        $script:AnthropicHttpClient = [System.Net.Http.HttpClient]::new($script:AnthropicHttpHandler)
+        $global:_AnthropicHttpClient = [System.Net.Http.HttpClient]::new($global:_AnthropicHttpHandler)
         # Set Timeout once at creation — immutable after first SendAsync.
         # Per-call timeouts use CancellationTokenSource instead.
-        $script:AnthropicHttpClient.Timeout = [System.Threading.Timeout]::InfiniteTimeSpan
+        $global:_AnthropicHttpClient.Timeout = [System.Threading.Timeout]::InfiniteTimeSpan
     }
-    $client = $script:AnthropicHttpClient
+    $client = $global:_AnthropicHttpClient
 
     try {
         while ($attempt -lt $maxRetries) {
@@ -772,11 +772,8 @@ function Get-TrimmedMessages {
     # Budget = context window minus response reservation
     $budget = $ContextLimit - $MaxResponseTokens
     
-    # Estimate current token count (rough: 4 chars per token)
-    $estimatedTokens = 0
-    foreach ($msg in $Messages) {
-        $estimatedTokens += [math]::Ceiling($msg.content.Length / 4)
-    }
+    # Estimate current token count
+    $estimatedTokens = Get-EstimatedTokenCount -Messages $Messages
     
     # If under budget, no trimming needed
     if ($estimatedTokens -le $budget) {
@@ -791,63 +788,57 @@ function Get-TrimmedMessages {
     }
     
     # Need to trim — keep first N (system context) and fill from the end
-    $trimmedMessages = @()
-    $evictedMessages = @()
+    $trimmedMessages = [System.Collections.Generic.List[object]]::new()
+    $evictedMessages = [System.Collections.Generic.List[object]]::new()
     $removedCount = 0
     
     # Always keep first N messages (system context / safe commands)
     $keepFirst = [math]::Min($KeepFirstN, $Messages.Count)
     for ($i = 0; $i -lt $keepFirst; $i++) {
-        $trimmedMessages += $Messages[$i]
+        $trimmedMessages.Add($Messages[$i])
     }
     
-    $firstTokens = 0
-    foreach ($msg in $trimmedMessages) {
-        $firstTokens += [math]::Ceiling($msg.content.Length / 4)
-    }
+    $firstTokens = Get-EstimatedTokenCount -Messages $trimmedMessages
     
     # Reserve ~200 tokens for the summary message if summarizing
     $summaryReserve = if ($Summarize) { 200 } else { 0 }
     $remainingBudget = $budget - $firstTokens - $summaryReserve
-    $endMessages = @()
+    $endMessages = [System.Collections.Generic.List[object]]::new()
     
     # Fill from the end (most recent messages first)
     for ($i = $Messages.Count - 1; $i -ge $keepFirst; $i--) {
-        $msgTokens = [math]::Ceiling($Messages[$i].content.Length / 4)
+        $msgTokens = Get-EstimatedTokenCount -Text $Messages[$i].content
         if ($remainingBudget - $msgTokens -ge 0) {
-            $endMessages = @($Messages[$i]) + $endMessages
+            $endMessages.Insert(0, $Messages[$i])
             $remainingBudget -= $msgTokens
         }
         else {
-            $evictedMessages += $Messages[$i]
+            $evictedMessages.Add($Messages[$i])
             $removedCount++
         }
     }
     
     # Build summary of evicted messages so model retains topic awareness
     if ($Summarize -and $evictedMessages.Count -gt 0) {
-        $topics = @()
+        $topics = [System.Collections.Generic.List[string]]::new()
         foreach ($msg in $evictedMessages) {
             if ($msg.role -eq 'user') {
                 $snippet = ($msg.content -replace '\s+', ' ').Trim()
                 if ($snippet.Length -gt 80) { $snippet = $snippet.Substring(0, 80) + '...' }
-                $topics += $snippet
+                $topics.Add($snippet)
             }
         }
         if ($topics.Count -gt 0) {
             $recapText = "[Earlier in this conversation ($removedCount messages trimmed for context), you discussed: $($topics -join '; ')]"
-            $trimmedMessages += @{ role = 'user'; content = $recapText }
-            $trimmedMessages += @{ role = 'assistant'; content = 'Understood, I recall those earlier topics.' }
+            $trimmedMessages.Add(@{ role = 'user'; content = $recapText })
+            $trimmedMessages.Add(@{ role = 'assistant'; content = 'Understood, I recall those earlier topics.' })
         }
     }
     
-    $trimmedMessages += $endMessages
+    $trimmedMessages.AddRange([object[]]$endMessages)
     
     # Recalculate final token count
-    $finalTokens = 0
-    foreach ($msg in $trimmedMessages) {
-        $finalTokens += [math]::Ceiling($msg.content.Length / 4)
-    }
+    $finalTokens = Get-EstimatedTokenCount -Messages $trimmedMessages
     
     return @{
         Messages        = $trimmedMessages

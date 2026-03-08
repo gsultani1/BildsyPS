@@ -4,6 +4,7 @@
 
 $global:ChatDbPath = "$global:BildsyPSHome\data\bildsyps.db"
 $global:ChatDbReady = $false
+$global:_ChatDbInitAttempted = $false
 if (-not $global:ChatLogsPath) { $global:ChatLogsPath = "$global:BildsyPSHome\logs\sessions" }
 
 # ===== Assembly Loading =====
@@ -12,7 +13,7 @@ function Initialize-SqliteAssembly {
     if ([System.AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq 'Microsoft.Data.Sqlite' }) {
         return $true
     }
-    $libDir = "$PSScriptRoot\lib"
+    $libDir = "$global:ModulesPath\lib"
 
     # Ensure native e_sqlite3.dll is next to managed DLLs (required for manual Add-Type loading)
     $nativeInLib = Join-Path $libDir "e_sqlite3.dll"
@@ -56,16 +57,62 @@ function Initialize-SqliteAssembly {
 }
 
 # ===== Connection Helper =====
+# Session-scoped connection pool: reuses a single connection across all DB operations
+# instead of opening/closing per function call (eliminates ~20 connection cycles per session).
+$global:ChatDbConnection = $null
+
 function Get-ChatDbConnection {
     param([string]$DbPath = $global:ChatDbPath)
+
+    # Reuse existing connection if healthy
+    if ($global:ChatDbConnection) {
+        try {
+            if ($global:ChatDbConnection.State -eq 'Open') {
+                $probe = $global:ChatDbConnection.CreateCommand()
+                $probe.CommandText = "PRAGMA user_version"
+                $probe.ExecuteScalar() | Out-Null
+                $probe.Dispose()
+                return $global:ChatDbConnection
+            }
+        }
+        catch { }
+        # Connection is dead — dispose and recreate
+        try { $global:ChatDbConnection.Dispose() } catch { }
+        $global:ChatDbConnection = $null
+    }
+
     $conn = [Microsoft.Data.Sqlite.SqliteConnection]::new("Data Source=$DbPath")
     $conn.Open()
-    # Enable WAL mode and foreign keys
+    # Enable WAL mode and foreign keys (only on fresh connections)
     $cmd = $conn.CreateCommand()
     $cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;"
     $cmd.ExecuteNonQuery() | Out-Null
     $cmd.Dispose()
+    $global:ChatDbConnection = $conn
     return $conn
+}
+
+function Close-ChatDb {
+    <#
+    .SYNOPSIS
+    Cleanly close the pooled SQLite connection. Call on profile unload or session end.
+    #>
+    if ($global:ChatDbConnection) {
+        try {
+            $global:ChatDbConnection.Close()
+            $global:ChatDbConnection.Dispose()
+        }
+        catch { }
+        $global:ChatDbConnection = $null
+    }
+}
+
+# ===== Lazy Initialization Guard =====
+function Ensure-ChatDbReady {
+    if ($global:ChatDbReady) { return $true }
+    if ($global:_ChatDbInitAttempted) { return $false }
+    $global:_ChatDbInitAttempted = $true
+    return [bool](Initialize-ChatDatabase)
 }
 
 # ===== Schema =====
@@ -142,6 +189,8 @@ END;
 
         $cmd.Dispose()
         $global:ChatDbReady = $true
+        # Register exit handler to flush WAL checkpoint on pooled connection
+        Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action { Close-ChatDb } -SupportEvent
 
         # Run migration if needed
         Import-JsonSessionsToDb -Connection $conn
@@ -153,8 +202,7 @@ END;
         return $false
     }
     finally {
-        $conn.Close()
-        $conn.Dispose()
+        # Connection is pooled — do not close here
     }
 }
 
@@ -175,7 +223,7 @@ function Save-ChatToDb {
         [string]$SystemPrompt
     )
 
-    if (-not $global:ChatDbReady) { return $null }
+    if (-not (Ensure-ChatDbReady)) { return $null }
 
     $conn = Get-ChatDbConnection
     try {
@@ -197,11 +245,21 @@ function Save-ChatToDb {
             $cmd.Parameters.Add([Microsoft.Data.Sqlite.SqliteParameter]::new("@id", $sessionId)) | Out-Null
             $cmd.ExecuteNonQuery() | Out-Null
 
-            # Delete old messages and re-insert (simplest approach for full overwrite)
-            $cmd.CommandText = "DELETE FROM messages WHERE session_id = @sid"
+            # Diff-based save: only insert messages beyond the existing count
+            # Falls back to full rewrite if message count decreased (e.g., after trimming)
+            $cmd.CommandText = "SELECT COUNT(*) FROM messages WHERE session_id = @sid"
             $cmd.Parameters.Clear()
             $cmd.Parameters.Add([Microsoft.Data.Sqlite.SqliteParameter]::new("@sid", $sessionId)) | Out-Null
-            $cmd.ExecuteNonQuery() | Out-Null
+            $existingCount = [int]$cmd.ExecuteScalar()
+
+            if ($existingCount -gt $Messages.Count) {
+                # Messages were trimmed — full rewrite needed
+                $cmd.CommandText = "DELETE FROM messages WHERE session_id = @sid"
+                $cmd.Parameters.Clear()
+                $cmd.Parameters.Add([Microsoft.Data.Sqlite.SqliteParameter]::new("@sid", $sessionId)) | Out-Null
+                $cmd.ExecuteNonQuery() | Out-Null
+                $existingCount = 0
+            }
         }
         else {
             # Insert new session
@@ -217,13 +275,15 @@ function Save-ChatToDb {
             $cmd.CommandText = "SELECT last_insert_rowid()"
             $cmd.Parameters.Clear()
             $sessionId = $cmd.ExecuteScalar()
+            $existingCount = 0
         }
 
-        # Insert messages
-        foreach ($msg in $Messages) {
+        # Insert only new messages (skip those already in DB)
+        for ($i = $existingCount; $i -lt $Messages.Count; $i++) {
+            $msg = $Messages[$i]
             $role = $msg.role
             $content = if ($msg.content -is [array]) { ($msg.content | ConvertTo-Json -Depth 5 -Compress) } else { "$($msg.content)" }
-            $tokenEst = [math]::Ceiling($content.Length / 4)
+            $tokenEst = Get-EstimatedTokenCount -Text $content
 
             $cmd.CommandText = "INSERT INTO messages (session_id, role, content, token_est) VALUES (@sid, @role, @content, @tokens)"
             $cmd.Parameters.Clear()
@@ -239,12 +299,9 @@ function Save-ChatToDb {
         return $sessionId
     }
     catch {
+        try { $tx.Rollback() } catch {}
         Write-Host "ChatStorage: Save failed -- $($_.Exception.Message)" -ForegroundColor Red
         return $null
-    }
-    finally {
-        $conn.Close()
-        $conn.Dispose()
     }
 }
 
@@ -258,7 +315,7 @@ function Get-ChatSessionsFromDb {
         [string]$NameFilter
     )
 
-    if (-not $global:ChatDbReady) { return @() }
+    if (-not (Ensure-ChatDbReady)) { return @() }
 
     $conn = Get-ChatDbConnection
     try {
@@ -273,29 +330,25 @@ function Get-ChatSessionsFromDb {
         $cmd.Parameters.Add([Microsoft.Data.Sqlite.SqliteParameter]::new("@limit", $Limit)) | Out-Null
 
         $reader = $cmd.ExecuteReader()
-        $sessions = @()
+        $sessions = [System.Collections.Generic.List[object]]::new()
         while ($reader.Read()) {
-            $sessions += @{
-                Id           = $reader.GetInt64(0)
-                Name         = $reader.GetString(1)
-                Provider     = if ($reader.IsDBNull(2)) { $null } else { $reader.GetString(2) }
-                Model        = if ($reader.IsDBNull(3)) { $null } else { $reader.GetString(3) }
-                CreatedAt    = $reader.GetString(4)
-                UpdatedAt    = $reader.GetString(5)
-                MessageCount = $reader.GetInt64(6)
-            }
+            $sessions.Add(@{
+                    Id           = $reader.GetInt64(0)
+                    Name         = $reader.GetString(1)
+                    Provider     = if ($reader.IsDBNull(2)) { $null } else { $reader.GetString(2) }
+                    Model        = if ($reader.IsDBNull(3)) { $null } else { $reader.GetString(3) }
+                    CreatedAt    = $reader.GetString(4)
+                    UpdatedAt    = $reader.GetString(5)
+                    MessageCount = $reader.GetInt64(6)
+                }) | Out-Null
         }
         $reader.Close()
         $cmd.Dispose()
-        return $sessions
+        return @($sessions)
     }
     catch {
         Write-Host "ChatStorage: List sessions failed -- $($_.Exception.Message)" -ForegroundColor Red
         return @()
-    }
-    finally {
-        $conn.Close()
-        $conn.Dispose()
     }
 }
 
@@ -309,7 +362,7 @@ function Resume-ChatFromDb {
         [int64]$Id = 0
     )
 
-    if (-not $global:ChatDbReady) { return $null }
+    if (-not (Ensure-ChatDbReady)) { return $null }
 
     $conn = Get-ChatDbConnection
     try {
@@ -333,12 +386,12 @@ function Resume-ChatFromDb {
         }
 
         $session = @{
-            Id          = $reader.GetInt64(0)
-            Name        = $reader.GetString(1)
-            Provider    = if ($reader.IsDBNull(2)) { $null } else { $reader.GetString(2) }
-            Model       = if ($reader.IsDBNull(3)) { $null } else { $reader.GetString(3) }
+            Id           = $reader.GetInt64(0)
+            Name         = $reader.GetString(1)
+            Provider     = if ($reader.IsDBNull(2)) { $null } else { $reader.GetString(2) }
+            Model        = if ($reader.IsDBNull(3)) { $null } else { $reader.GetString(3) }
             SystemPrompt = if ($reader.IsDBNull(4)) { $null } else { $reader.GetString(4) }
-            Messages    = @()
+            Messages     = @()
         }
         $reader.Close()
 
@@ -347,12 +400,14 @@ function Resume-ChatFromDb {
         $cmd.Parameters.Clear()
         $cmd.Parameters.Add([Microsoft.Data.Sqlite.SqliteParameter]::new("@sid", $session.Id)) | Out-Null
         $reader = $cmd.ExecuteReader()
+        $messages = [System.Collections.Generic.List[object]]::new()
         while ($reader.Read()) {
-            $session.Messages += @{
-                role    = $reader.GetString(0)
-                content = $reader.GetString(1)
-            }
+            $messages.Add(@{
+                    role    = $reader.GetString(0)
+                    content = $reader.GetString(1)
+                }) | Out-Null
         }
+        $session.Messages = @($messages)
         $reader.Close()
         $cmd.Dispose()
         return $session
@@ -360,10 +415,6 @@ function Resume-ChatFromDb {
     catch {
         Write-Host "ChatStorage: Resume failed -- $($_.Exception.Message)" -ForegroundColor Red
         return $null
-    }
-    finally {
-        $conn.Close()
-        $conn.Dispose()
     }
 }
 
@@ -377,7 +428,7 @@ function Remove-ChatSessionFromDb {
         [string]$Name
     )
 
-    if (-not $global:ChatDbReady) { return $false }
+    if (-not (Ensure-ChatDbReady)) { return $false }
 
     $conn = Get-ChatDbConnection
     try {
@@ -392,10 +443,6 @@ function Remove-ChatSessionFromDb {
         Write-Host "ChatStorage: Delete failed -- $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
-    finally {
-        $conn.Close()
-        $conn.Dispose()
-    }
 }
 
 function Rename-ChatSessionInDb {
@@ -408,7 +455,7 @@ function Rename-ChatSessionInDb {
         [Parameter(Mandatory)][string]$NewName
     )
 
-    if (-not $global:ChatDbReady) { return $false }
+    if (-not (Ensure-ChatDbReady)) { return $false }
 
     $conn = Get-ChatDbConnection
     try {
@@ -424,10 +471,6 @@ function Rename-ChatSessionInDb {
         Write-Host "ChatStorage: Rename failed -- $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
-    finally {
-        $conn.Close()
-        $conn.Dispose()
-    }
 }
 
 function Search-ChatFTS {
@@ -441,7 +484,7 @@ function Search-ChatFTS {
         [int]$Limit = 20
     )
 
-    if (-not $global:ChatDbReady) { return @() }
+    if (-not (Ensure-ChatDbReady)) { return @() }
 
     $conn = Get-ChatDbConnection
     try {
@@ -465,27 +508,23 @@ LIMIT @limit
         $cmd.Parameters.Add([Microsoft.Data.Sqlite.SqliteParameter]::new("@limit", $Limit)) | Out-Null
 
         $reader = $cmd.ExecuteReader()
-        $results = @()
+        $results = [System.Collections.Generic.List[object]]::new()
         while ($reader.Read()) {
-            $results += @{
-                SessionName = $reader.GetString(0)
-                Role        = $reader.GetString(1)
-                Snippet     = $reader.GetString(2)
-                Timestamp   = $reader.GetString(3)
-                SessionId   = $reader.GetInt64(4)
-            }
+            $results.Add(@{
+                    SessionName = $reader.GetString(0)
+                    Role        = $reader.GetString(1)
+                    Snippet     = $reader.GetString(2)
+                    Timestamp   = $reader.GetString(3)
+                    SessionId   = $reader.GetInt64(4)
+                }) | Out-Null
         }
         $reader.Close()
         $cmd.Dispose()
-        return $results
+        return @($results)
     }
     catch {
         Write-Host "ChatStorage: Search failed -- $($_.Exception.Message)" -ForegroundColor Red
         return @()
-    }
-    finally {
-        $conn.Close()
-        $conn.Dispose()
     }
 }
 
@@ -517,10 +556,10 @@ function Export-ChatSessionFromDb {
 
     foreach ($msg in $session.Messages) {
         $label = switch ($msg.role) {
-            'system'    { '**System**' }
-            'user'      { '**You**' }
+            'system' { '**System**' }
+            'user' { '**You**' }
             'assistant' { '**AI**' }
-            default     { "**$($msg.role)**" }
+            default { "**$($msg.role)**" }
         }
         $md += "$label`n"
         $md += "$($msg.content)`n"
@@ -606,7 +645,7 @@ function Import-JsonSessionsToDb {
                     $role = "$($msg.role)"
                     $content = "$($msg.content)"
                     if (-not $role -or -not $content) { continue }
-                    $tokenEst = [math]::Ceiling($content.Length / 4)
+                    $tokenEst = Get-EstimatedTokenCount -Text $content
 
                     $cmd.CommandText = "INSERT INTO messages (session_id, role, content, token_est) VALUES (@sid, @role, @content, @tokens)"
                     $cmd.Parameters.Clear()
@@ -637,11 +676,7 @@ function Import-JsonSessionsToDb {
     }
 }
 
-# ===== Initialize on load =====
-$dbInitResult = Initialize-ChatDatabase
-if ($dbInitResult) {
-    Write-Verbose "ChatStorage loaded: SQLite database ready at $global:ChatDbPath"
-}
-else {
-    Write-Verbose "ChatStorage: Database not available, JSON fallback will be used."
-}
+# ===== Deferred — Initialize on first access =====
+# DB init is triggered lazily by Ensure-ChatDbReady on first CRUD call.
+# Assembly loading, table creation, and migration all deferred from profile load.
+Write-Verbose "ChatStorage loaded: DB init deferred to first access"

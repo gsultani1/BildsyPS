@@ -14,7 +14,8 @@ function Import-NaturalLanguageMappings {
         try {
             $global:NLMappings = Get-Content $global:NLMappingsPath -Raw | ConvertFrom-Json
             return $true
-        } catch {
+        }
+        catch {
             Write-Host "Warning: Failed to load NL mappings: $($_.Exception.Message)" -ForegroundColor Yellow
             return $false
         }
@@ -85,14 +86,14 @@ function Convert-NaturalLanguageToCommand {
     
     # Fallback: hardcoded mappings for reliability
     $fallbackMappings = @{
-        'open word' = 'Start-Process winword'
-        'open excel' = 'Start-Process excel'
-        'open notepad' = 'Start-Process notepad'
+        'open word'       = 'Start-Process winword'
+        'open excel'      = 'Start-Process excel'
+        'open notepad'    = 'Start-Process notepad'
         'open calculator' = 'Start-Process calc'
-        'list files' = 'Get-ChildItem'
-        'show files' = 'Get-ChildItem'
-        'show processes' = 'Get-Process'
-        'list processes' = 'Get-Process'
+        'list files'      = 'Get-ChildItem'
+        'show files'      = 'Get-ChildItem'
+        'show processes'  = 'Get-Process'
+        'list processes'  = 'Get-Process'
     }
     
     foreach ($phrase in $fallbackMappings.Keys) {
@@ -127,10 +128,39 @@ function Get-TokenEstimate {
 function Get-EstimatedTokenCount {
     <#
     .SYNOPSIS
-    Estimate token count for current chat session
+    Estimate token count for a string, message array, or the current chat session.
+    Central token estimation function — all modules should call this instead of inline Length/4.
+    .PARAMETER Text
+    A string to estimate tokens for.
+    .PARAMETER Messages
+    An array of message hashtables (each with a .content property).
+    .PARAMETER Provider
+    LLM provider name for provider-specific chars-per-token ratio.
+    .EXAMPLE
+    Get-EstimatedTokenCount -Text "Hello world"
+    Get-EstimatedTokenCount -Messages $agentMessages
+    Get-EstimatedTokenCount  # uses $global:ChatSessionHistory
     #>
+    param(
+        [string]$Text,
+        [array]$Messages,
+        [string]$Provider = 'default'
+    )
+
+    $charsPerToken = Get-TokenEstimate -Provider $Provider
+
+    if ($Text) {
+        return [math]::Ceiling($Text.Length / $charsPerToken)
+    }
+
+    if ($Messages -and $Messages.Count -gt 0) {
+        $totalChars = ($Messages | ForEach-Object { $_.content.Length } | Measure-Object -Sum).Sum
+        return [math]::Ceiling($totalChars / $charsPerToken)
+    }
+
+    # Fallback: estimate current session
     $totalChars = ($global:ChatSessionHistory | ForEach-Object { $_.content.Length } | Measure-Object -Sum).Sum
-    return [math]::Ceiling($totalChars / 4)
+    return [math]::Ceiling($totalChars / $charsPerToken)
 }
 
 Write-Verbose "NaturalLanguage loaded: Convert-NaturalLanguageToCommand, Get-TokenEstimate, Get-EstimatedTokenCount"

@@ -126,7 +126,7 @@ function Initialize-BildsyPSHome {
     $oldPlugins = "$oldRoot\Plugins"
     if (Test-Path $oldPlugins) {
         $userPlugins = Get-ChildItem "$oldPlugins\*.ps1" -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -notlike '_Example*' -and $_.Name -notlike '_Pomodoro*' -and $_.Name -notlike '_QuickNotes*' }
+        Where-Object { $_.Name -notlike '_Example*' -and $_.Name -notlike '_Pomodoro*' -and $_.Name -notlike '_QuickNotes*' }
         foreach ($p in $userPlugins) {
             $dest = Join-Path "$global:BildsyPSHome\plugins" $p.Name
             if (-not (Test-Path $dest)) {
@@ -157,68 +157,198 @@ function Initialize-BildsyPSHome {
 
 Initialize-BildsyPSHome
 
-# ===== Module Loading =====
+# ===== Bundled Module Loading =====
+# PowerShell charges ~250-350ms per dot-source operation. With 39 modules, that's
+# ~12s of structural overhead. Fix: concatenate all modules into a single string,
+# create one [scriptblock], and dot-source it once.
 $global:ModulesPath = "$PSScriptRoot\Modules"
-$global:DebugModuleLoading = $false  # Set to $true to see module load errors
+$global:DebugModuleLoading = $false
 
-# Modular components - load in dependency order
-if (Test-Path $global:ModulesPath) {
-    # Core utilities (no dependencies)
-    . "$global:ModulesPath\ConfigLoader.ps1"       # Load .env config FIRST
-    . "$global:ModulesPath\PlatformUtils.ps1"      # Cross-platform helpers
-    . "$global:ModulesPath\SecurityUtils.ps1"      # Path/URL security
-    . "$global:ModulesPath\SecretScanner.ps1"      # Secret detection (before CommandValidation so scan runs early)
-    . "$global:ModulesPath\CommandValidation.ps1"  # Command safety tables
-    
-    # System and utilities
-    . "$global:ModulesPath\SystemUtilities.ps1"    # uptime, hwinfo, ports, procs, sudo, PATH
-    . "$global:ModulesPath\ArchiveUtils.ps1"       # zip, unzip
-    . "$global:ModulesPath\DockerTools.ps1"        # Docker shortcuts
-    . "$global:ModulesPath\DevTools.ps1"           # IDE launchers, dev checks
-    
-    # AI and chat infrastructure
-    . "$global:ModulesPath\NaturalLanguage.ps1"    # NL to command translation
-    . "$global:ModulesPath\ResponseParser.ps1"     # Parse AI responses
-    
-    # Document and productivity
-    . "$global:ModulesPath\DocumentTools.ps1"      # OpenXML document creation
-    . "$global:ModulesPath\SafetySystem.ps1"       # AI execution safety
-    . "$global:ModulesPath\TerminalTools.ps1"      # Terminal tool integration
-    . "$global:ModulesPath\NavigationUtils.ps1"    # Directory shortcuts
-    . "$global:ModulesPath\PackageManager.ps1"     # Tool installation
-    . "$global:ModulesPath\WebTools.ps1"           # Web search
-    . "$global:ModulesPath\ProductivityTools.ps1"  # Clipboard, git, calendar
-    . "$global:ModulesPath\MCPClient.ps1"          # MCP server integration
-    
-    # Context awareness
-    . "$global:ModulesPath\BrowserAwareness.ps1"   # Browser tab awareness
-    . "$global:ModulesPath\VisionTools.ps1"        # Vision model support (screenshot, image analysis)
-    . "$global:ModulesPath\OCRTools.ps1"           # Tesseract OCR + pdftotext integration
-    . "$global:ModulesPath\CodeArtifacts.ps1"      # AI code generation artifacts
-    . "$global:ModulesPath\AppBuilder.ps1"        # Prompt-to-executable pipeline
+$_bundleSw = [System.Diagnostics.Stopwatch]::StartNew()
+$_bundleContent = [System.Text.StringBuilder]::new(512KB)
 
-    # User experience
-    . "$global:ModulesPath\FzfIntegration.ps1"     # Fuzzy finder
-    . "$global:ModulesPath\PersistentAliases.ps1"  # User-defined aliases
-    . "$global:ModulesPath\ProfileHelp.ps1"        # Help and tips
-    
-    # Chat session (depends on many modules)
-    . "$global:ModulesPath\ToastNotifications.ps1"   # Toast notifications
-    . "$global:ModulesPath\FolderContext.ps1"        # Folder awareness for AI context
-    . "$global:ModulesPath\ChatStorage.ps1"          # SQLite chat persistence + FTS5 search
-    . "$global:ModulesPath\ChatSession.ps1"          # LLM chat loop
-    . "$global:ModulesPath\AgentHeartbeat.ps1"       # Cron-triggered agent tasks
+# IntentAliasSystem sub-modules (normally cascaded via dot-source)
+$_intentSubModules = @(
+    'IntentRegistry.ps1', 'IntentActions.ps1', 'IntentActionsSystem.ps1',
+    'WorkflowEngine.ps1', 'IntentRouter.ps1', 'AgentTools.ps1', 'AgentLoop.ps1'
+)
+
+# All modules to bundle (in dependency order)
+$_allModules = @(
+    'ConfigLoader.ps1', 'PlatformUtils.ps1', 'SecurityUtils.ps1',
+    'SecretScanner.ps1', 'CommandValidation.ps1',
+    'SystemUtilities.ps1', 'ArchiveUtils.ps1', 'DockerTools.ps1', 'DevTools.ps1',
+    'NaturalLanguage.ps1', 'ResponseParser.ps1',
+    'DocumentTools.ps1', 'SafetySystem.ps1', 'TerminalTools.ps1',
+    'NavigationUtils.ps1', 'PackageManager.ps1', 'WebTools.ps1',
+    'ProductivityTools.ps1', 'MCPClient.ps1',
+    'BrowserAwareness.ps1', 'CodeArtifacts.ps1',
+    'FzfIntegration.ps1', 'PersistentAliases.ps1', 'ProfileHelp.ps1',
+    'ToastNotifications.ps1', 'FolderContext.ps1', 'ChatStorage.ps1', 'ChatSession.ps1'
+)
+
+# Inject $PSScriptRoot so modules that reference it for paths resolve correctly
+[void]$_bundleContent.AppendLine("`$PSScriptRoot = `"$($global:ModulesPath)`"")
+
+# Read and concatenate all main modules with per-module timing wrappers
+foreach ($mod in $_allModules) {
+    $modPath = Join-Path $global:ModulesPath $mod
+    if (Test-Path $modPath) {
+        [void]$_bundleContent.AppendLine("`$_modSw = [System.Diagnostics.Stopwatch]::StartNew()")
+        [void]$_bundleContent.AppendLine([System.IO.File]::ReadAllText($modPath))
+        [void]$_bundleContent.AppendLine("`$_modSw.Stop(); `$global:ProfileTimings['$mod'] = `$_modSw.ElapsedMilliseconds")
+    }
 }
 
-# Core modules (load AFTER modules so real functions exist before stub checks)
-. "$global:ModulesPath\IntentAliasSystem.ps1"
-. "$global:ModulesPath\ChatProviders.ps1"
+# IntentAliasSystem: inline the parent + all 7 sub-modules
+$_iasPath = Join-Path $global:ModulesPath 'IntentAliasSystem.ps1'
+if (Test-Path $_iasPath) {
+    [void]$_bundleContent.AppendLine("`$_modSw = [System.Diagnostics.Stopwatch]::StartNew()")
+    $iasContent = [System.IO.File]::ReadAllText($_iasPath)
+    $iasContent = $iasContent -replace '\. "\$PSScriptRoot\\[^"]+"', '# (inlined below)'
+    [void]$_bundleContent.AppendLine($iasContent)
+    foreach ($sub in $_intentSubModules) {
+        $subPath = Join-Path $global:ModulesPath $sub
+        if (Test-Path $subPath) {
+            [void]$_bundleContent.AppendLine([System.IO.File]::ReadAllText($subPath))
+        }
+    }
+    [void]$_bundleContent.AppendLine("`$_modSw.Stop(); `$global:ProfileTimings['IntentAliasSystem.ps1'] = `$_modSw.ElapsedMilliseconds")
+}
 
-# User skills (load AFTER intents so registries exist, BEFORE plugins)
-. "$global:ModulesPath\UserSkills.ps1"
+# ChatProviders
+$_cpPath = Join-Path $global:ModulesPath 'ChatProviders.ps1'
+if (Test-Path $_cpPath) {
+    [void]$_bundleContent.AppendLine("`$_modSw = [System.Diagnostics.Stopwatch]::StartNew()")
+    [void]$_bundleContent.AppendLine([System.IO.File]::ReadAllText($_cpPath))
+    [void]$_bundleContent.AppendLine("`$_modSw.Stop(); `$global:ProfileTimings['ChatProviders.ps1'] = `$_modSw.ElapsedMilliseconds")
+}
 
-# Plugins (load AFTER core so registries exist for merging)
-. "$global:ModulesPath\PluginLoader.ps1"
+# UserSkills
+$_usPath = Join-Path $global:ModulesPath 'UserSkills.ps1'
+if (Test-Path $_usPath) {
+    [void]$_bundleContent.AppendLine("`$_modSw = [System.Diagnostics.Stopwatch]::StartNew()")
+    [void]$_bundleContent.AppendLine([System.IO.File]::ReadAllText($_usPath))
+    [void]$_bundleContent.AppendLine("`$_modSw.Stop(); `$global:ProfileTimings['UserSkills.ps1'] = `$_modSw.ElapsedMilliseconds")
+}
+
+# PluginLoader
+$_plPath = Join-Path $global:ModulesPath 'PluginLoader.ps1'
+if (Test-Path $_plPath) {
+    [void]$_bundleContent.AppendLine("`$_modSw = [System.Diagnostics.Stopwatch]::StartNew()")
+    [void]$_bundleContent.AppendLine([System.IO.File]::ReadAllText($_plPath))
+    [void]$_bundleContent.AppendLine("`$_modSw.Stop(); `$global:ProfileTimings['PluginLoader.ps1'] = `$_modSw.ElapsedMilliseconds")
+}
+
+# Execute the entire bundle as a single scriptblock (1 parse + 1 execute)
+. ([scriptblock]::Create($_bundleContent.ToString()))
+
+$_bundleSw.Stop()
+$global:ProfileTimings['_BUNDLE_TOTAL'] = $_bundleSw.ElapsedMilliseconds
+
+# Cleanup
+Remove-Variable -Name '_bundleContent', '_bundleSw', '_allModules', '_intentSubModules', '_iasPath', '_cpPath', '_usPath', '_plPath' -ErrorAction SilentlyContinue
+
+
+
+# ===== Deferred Module Loading =====
+# Modules below are loaded on first use to reduce profile startup time.
+# Each stub dot-sources the real module in its own scope so loaded functions
+# shadow the stub locally, then the recursive call resolves to the real implementation.
+# On subsequent calls the stub re-dot-sources (fast — file is in OS page cache).
+$global:DeferredLoaded = @{}
+
+# --- VisionTools.ps1 stubs ---
+function Invoke-Vision {
+    if (-not $global:DeferredLoaded['VisionTools.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\VisionTools.ps1"; $sw.Stop(); $global:ProfileTimings['VisionTools.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['VisionTools.ps1'] = $true } else { . "$global:ModulesPath\VisionTools.ps1" }
+    Invoke-Vision @args
+}
+function Send-ImageToAI {
+    if (-not $global:DeferredLoaded['VisionTools.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\VisionTools.ps1"; $sw.Stop(); $global:ProfileTimings['VisionTools.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['VisionTools.ps1'] = $true } else { . "$global:ModulesPath\VisionTools.ps1" }
+    Send-ImageToAI @args
+}
+function Test-VisionSupport {
+    if (-not $global:DeferredLoaded['VisionTools.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\VisionTools.ps1"; $sw.Stop(); $global:ProfileTimings['VisionTools.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['VisionTools.ps1'] = $true } else { . "$global:ModulesPath\VisionTools.ps1" }
+    Test-VisionSupport @args
+}
+function Capture-Screenshot {
+    if (-not $global:DeferredLoaded['VisionTools.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\VisionTools.ps1"; $sw.Stop(); $global:ProfileTimings['VisionTools.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['VisionTools.ps1'] = $true } else { . "$global:ModulesPath\VisionTools.ps1" }
+    Capture-Screenshot @args
+}
+Set-Alias vision Invoke-Vision -Force
+
+# --- OCRTools.ps1 stubs ---
+function Invoke-OCRFile {
+    if (-not $global:DeferredLoaded['OCRTools.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\OCRTools.ps1"; $sw.Stop(); $global:ProfileTimings['OCRTools.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['OCRTools.ps1'] = $true } else { . "$global:ModulesPath\OCRTools.ps1" }
+    Invoke-OCRFile @args
+}
+function Invoke-OCR {
+    if (-not $global:DeferredLoaded['OCRTools.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\OCRTools.ps1"; $sw.Stop(); $global:ProfileTimings['OCRTools.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['OCRTools.ps1'] = $true } else { . "$global:ModulesPath\OCRTools.ps1" }
+    Invoke-OCR @args
+}
+function ConvertFrom-PDF {
+    if (-not $global:DeferredLoaded['OCRTools.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\OCRTools.ps1"; $sw.Stop(); $global:ProfileTimings['OCRTools.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['OCRTools.ps1'] = $true } else { . "$global:ModulesPath\OCRTools.ps1" }
+    ConvertFrom-PDF @args
+}
+Set-Alias ocr Invoke-OCRFile -Force
+
+# --- AppBuilder.ps1 stubs ---
+function New-AppBuild {
+    if (-not $global:DeferredLoaded['AppBuilder.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\AppBuilder.ps1"; $sw.Stop(); $global:ProfileTimings['AppBuilder.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['AppBuilder.ps1'] = $true } else { . "$global:ModulesPath\AppBuilder.ps1" }
+    New-AppBuild @args
+}
+function Update-AppBuild {
+    if (-not $global:DeferredLoaded['AppBuilder.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\AppBuilder.ps1"; $sw.Stop(); $global:ProfileTimings['AppBuilder.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['AppBuilder.ps1'] = $true } else { . "$global:ModulesPath\AppBuilder.ps1" }
+    Update-AppBuild @args
+}
+function Get-AppBuilds {
+    if (-not $global:DeferredLoaded['AppBuilder.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\AppBuilder.ps1"; $sw.Stop(); $global:ProfileTimings['AppBuilder.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['AppBuilder.ps1'] = $true } else { . "$global:ModulesPath\AppBuilder.ps1" }
+    Get-AppBuilds @args
+}
+function Remove-AppBuild {
+    if (-not $global:DeferredLoaded['AppBuilder.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\AppBuilder.ps1"; $sw.Stop(); $global:ProfileTimings['AppBuilder.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['AppBuilder.ps1'] = $true } else { . "$global:ModulesPath\AppBuilder.ps1" }
+    Remove-AppBuild @args
+}
+Set-Alias builds Get-AppBuilds -Force
+Set-Alias rebuild Update-AppBuild -Force
+
+# --- AgentHeartbeat.ps1 stubs ---
+function Get-HeartbeatStatus {
+    if (-not $global:DeferredLoaded['AgentHeartbeat.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\AgentHeartbeat.ps1"; $sw.Stop(); $global:ProfileTimings['AgentHeartbeat.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['AgentHeartbeat.ps1'] = $true } else { . "$global:ModulesPath\AgentHeartbeat.ps1" }
+    Get-HeartbeatStatus @args
+}
+function Show-AgentTaskList {
+    if (-not $global:DeferredLoaded['AgentHeartbeat.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\AgentHeartbeat.ps1"; $sw.Stop(); $global:ProfileTimings['AgentHeartbeat.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['AgentHeartbeat.ps1'] = $true } else { . "$global:ModulesPath\AgentHeartbeat.ps1" }
+    Show-AgentTaskList @args
+}
+function Add-AgentTask {
+    if (-not $global:DeferredLoaded['AgentHeartbeat.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\AgentHeartbeat.ps1"; $sw.Stop(); $global:ProfileTimings['AgentHeartbeat.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['AgentHeartbeat.ps1'] = $true } else { . "$global:ModulesPath\AgentHeartbeat.ps1" }
+    Add-AgentTask @args
+}
+function Invoke-AgentHeartbeat {
+    if (-not $global:DeferredLoaded['AgentHeartbeat.ps1']) { $sw = [System.Diagnostics.Stopwatch]::StartNew(); . "$global:ModulesPath\AgentHeartbeat.ps1"; $sw.Stop(); $global:ProfileTimings['AgentHeartbeat.ps1 (deferred)'] = $sw.ElapsedMilliseconds; $global:DeferredLoaded['AgentHeartbeat.ps1'] = $true } else { . "$global:ModulesPath\AgentHeartbeat.ps1" }
+    Invoke-AgentHeartbeat @args
+}
+Set-Alias heartbeat Get-HeartbeatStatus -Force
+Set-Alias heartbeat-tasks Show-AgentTaskList -Force
+
+function Show-ProfileTimings {
+    <#
+    .SYNOPSIS
+    Display profile module load times, ranked slowest-first.
+    #>
+    $total = ($global:ProfileTimings.Values | Measure-Object -Sum).Sum
+    Write-Host "`n  Profile Module Load Times (total: ${total}ms)" -ForegroundColor Cyan
+    Write-Host "  $('-' * 50)" -ForegroundColor DarkGray
+    $global:ProfileTimings.GetEnumerator() |
+    Sort-Object Value -Descending |
+    ForEach-Object {
+        $pct = if ($total -gt 0) { [math]::Round($_.Value / $total * 100, 1) } else { 0 }
+        $color = if ($_.Value -gt 100) { 'Yellow' } elseif ($_.Value -gt 50) { 'DarkYellow' } else { 'Gray' }
+        Write-Host ("  {0,-35} {1,5}ms  ({2}%)" -f $_.Key, $_.Value, $pct) -ForegroundColor $color
+    }
+    Write-Host ""
+}
 
 # ===== Module Reload Functions =====
 function Update-IntentAliases {

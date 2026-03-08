@@ -3,8 +3,13 @@
 # and multimodal message construction for Claude, GPT-4o, and Ollama vision models.
 # Uses System.Drawing + System.Windows.Forms for screen capture (Windows).
 
-Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
-Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+$global:_VisionAssembliesLoaded = $false
+function Initialize-VisionAssemblies {
+    if ($global:_VisionAssembliesLoaded) { return }
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+    Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+    $global:_VisionAssembliesLoaded = $true
+}
 
 # ===== Vision-Capable Models =====
 $global:VisionModels = @(
@@ -78,6 +83,7 @@ function Capture-Screenshot {
     )
 
     try {
+        Initialize-VisionAssemblies
         if ($Region) {
             $bounds = New-Object System.Drawing.Rectangle($Region.X, $Region.Y, $Region.Width, $Region.Height)
         }
@@ -124,6 +130,7 @@ function Get-ClipboardImage {
     param([switch]$FullResolution)
 
     try {
+        Initialize-VisionAssemblies
         if (-not [System.Windows.Forms.Clipboard]::ContainsImage()) {
             return @{ Success = $false; Output = 'No image on clipboard' }
         }
@@ -223,6 +230,7 @@ function ConvertTo-ImageBase64 {
     }
 
     try {
+        Initialize-VisionAssemblies
         # Resize if needed
         if (-not $FullResolution) {
             $bitmap = New-Object System.Drawing.Bitmap($Path)
@@ -347,9 +355,9 @@ function Send-ImageToAI {
     if (-not (Test-VisionSupport -Provider $Provider -Model $Model)) {
         $suggestedModels = switch ($Provider) {
             'anthropic' { 'claude-sonnet-4-5-20250929, claude-3-5-sonnet-20241022' }
-            'openai'    { 'gpt-4o, gpt-4o-mini' }
-            'ollama'    { 'llava, llama3.2-vision' }
-            default     { 'gpt-4o (openai), claude-sonnet-4-5-20250929 (anthropic), llava (ollama)' }
+            'openai' { 'gpt-4o, gpt-4o-mini' }
+            'ollama' { 'llava, llama3.2-vision' }
+            default { 'gpt-4o (openai), claude-sonnet-4-5-20250929 (anthropic), llava (ollama)' }
         }
         return @{
             Success = $false
